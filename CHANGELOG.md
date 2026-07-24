@@ -7,10 +7,30 @@ this project aims to follow [Semantic Versioning](https://semver.org) from 1.0.0
 
 ### Added
 
-- Initial scaffold: `foreguard plan` produces a **Mutation Plan** from a JSON list
+- **Argument-aware classification** — the preview now inspects a tool's
+  *arguments*, not just its name, and **upgrades** the verdict when they reveal a
+  hidden mutation (fail-safe: arguments can only make a call more restricted).
+  Catches the cases a name-only classifier misses:
+  - a read-looking `fetch`/`request` with a writing HTTP `method` (POST/PUT/PATCH/DELETE),
+  - a `query`/`sql` whose leading keyword mutates (INSERT/UPDATE/DELETE/DROP/…),
+  - an `operation`/`action` argument that names a mutating action,
+  - a destructive program or write-redirect in a `command`/`cmd`/`script`.
+
+  The Mutation Plan now shows *why* an argument-detected mutation was flagged.
+
+### Changed
+
+- Depend on the published `kedge-core = "0.2"` (hardened, deny-wins) instead of a
+  git revision.
+
+## [0.1.0] — 2026-07-24
+
+### Added
+
+- Initial release: `foreguard plan` produces a **Mutation Plan** from a JSON list
   of tool calls — classifying each as read-only (would run) or mutating
   (intercepted, previewed, not executed), with `--json` output.
 - Classification engine reused from [kedge](https://github.com/nlj3/kedge)
-  (`kedge-core`) as a git dependency — fail-safe and deny-wins.
+  (`kedge-core`) — fail-safe and deny-wins.
 - Pro hygiene: CI (fmt/clippy/test/audit on Linux + macOS), dependabot, pinned
   toolchain, BUSL-1.1 license.
