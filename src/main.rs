@@ -21,8 +21,11 @@ use std::io::Read;
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
-use kedge_core::{classify, ToolSafety};
+use kedge_core::ToolSafety;
 use serde::{Deserialize, Serialize};
+
+mod classify;
+use classify::classify_call;
 
 #[derive(Parser)]
 #[command(
@@ -69,6 +72,9 @@ struct PlanEntry {
     verdict: &'static str,
     mutating: bool,
     risk: Option<&'static str>,
+    /// Present when the *arguments* (not the name) revealed the mutation.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
     arguments: serde_json::Value,
 }
 
@@ -119,7 +125,8 @@ fn build_plan(calls: &[ToolCall]) -> Plan {
     let mut entries = Vec::with_capacity(calls.len());
     let (mut read_only, mut intercepted) = (0usize, 0usize);
     for c in calls {
-        let (verdict, mutating, risk) = match classify(&c.name) {
+        let v = classify_call(&c.name, &c.arguments);
+        let (verdict, mutating, risk) = match v.safety {
             ToolSafety::ReadOnly => {
                 read_only += 1;
                 ("run", false, None)
@@ -134,6 +141,7 @@ fn build_plan(calls: &[ToolCall]) -> Plan {
             verdict,
             mutating,
             risk,
+            reason: v.arg_reason,
             arguments: c.arguments.clone(),
         });
     }
@@ -148,10 +156,16 @@ fn print_plan(plan: &Plan) {
     println!("Foreguard — mutation preview\n");
     for e in &plan.entries {
         if e.mutating {
+            let why = e
+                .reason
+                .as_deref()
+                .map(|r| format!("  ← {r}"))
+                .unwrap_or_default();
             println!(
-                "  ⚠  {:<26} MUTATING ({}) — intercepted, NOT executed",
+                "  ⚠  {:<26} MUTATING ({}) — intercepted, NOT executed{}",
                 e.tool,
-                e.risk.unwrap_or("?")
+                e.risk.unwrap_or("?"),
+                why
             );
         } else {
             println!("  ✔  {:<26} read-only — would run for real", e.tool);
