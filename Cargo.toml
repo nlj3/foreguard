@@ -1,0 +1,30 @@
+[package]
+name = "foreguard"
+version = "0.1.0"
+edition = "2021"
+license = "BUSL-1.1"
+description = "Preview what your AI agent is about to do — before it does it. A dry-run trust layer for autonomous agents, powered by kedge."
+repository = "https://github.com/nlj3/foreguard"
+homepage = "https://foreguard.io"
+authors = ["Noel Jackson <noeljacksonjs@gmail.com>"]
+keywords = ["ai", "agent", "security", "mcp", "dry-run"]
+categories = ["command-line-utilities", "development-tools"]
+readme = "README.md"
+
+[[bin]]
+name = "foreguard"
+path = "src/main.rs"
+
+[dependencies]
+# Foreguard is *extracted from*, not forked from, kedge — it reuses kedge's
+# fail-safe tool classifier as its engine. Pinned to the hardened revision;
+# repoint to a released tag once kedge cuts one.
+kedge-core = { git = "https://github.com/nlj3/kedge", rev = "821b9bc" }
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+anyhow = "1"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1

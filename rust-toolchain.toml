@@ -1,0 +1,4 @@
+# Pin the toolchain so a contributor's local `cargo fmt`/`clippy` matches CI.
+[toolchain]
+channel = "stable"
+components = ["rustfmt", "clippy"]
