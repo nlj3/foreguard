@@ -5,6 +5,8 @@ this project aims to follow [Semantic Versioning](https://semver.org) from 1.0.0
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-07-24
+
 ### Added
 
 - **Context Foresight — dynamic taint tracking** (`foreguard proxy --taint -- <server…>`).
