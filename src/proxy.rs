@@ -104,12 +104,21 @@ fn inspect(line: &str) -> Inspection {
         "result": { "content": [{ "type": "text", "text": text }], "isError": false }
     })
     .to_string();
+    let diff = crate::diff::render(name, &args);
+    // Indent the diff under the headline so it reads as one block.
+    let diff_block = diff
+        .as_deref()
+        .map(|d| {
+            let body: String = d.lines().map(|l| format!("\n    {l}")).collect();
+            format!("{body}\n")
+        })
+        .unwrap_or_default();
     let log = format!(
-        "⚠  foreguard intercepted `{name}` ({} risk){why} — NOT executed{effect_tag}",
+        "⚠  foreguard intercepted `{name}` ({} risk){why} — NOT executed{effect_tag}{diff_block}",
         risk.as_str()
     );
     let prompt = format!(
-        "⚠  `{name}` ({} risk){why}{effect_tag}\n    Execute this for real? [y/N] ",
+        "⚠  `{name}` ({} risk){why}{effect_tag}{diff_block}\n    Execute this for real? [y/N] ",
         risk.as_str()
     );
     Inspection::Mutation(Preview {

@@ -25,6 +25,7 @@ use kedge_core::ToolSafety;
 use serde::{Deserialize, Serialize};
 
 mod classify;
+mod diff;
 mod effect;
 mod ledger;
 mod mcp;
