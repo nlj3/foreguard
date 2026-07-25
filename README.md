@@ -72,17 +72,24 @@ agent proposes.
 ## Status & roadmap
 
 Early. The classifier and the Mutation Plan are real and tested; the surface around
-them is being built. Planned, in order:
+them is being built.
 
-1. **Argument-aware classification** — inspect arguments, not just names (an HTTP
-   `fetch` with `method:"DELETE"`, a mutating SQL verb), so the preview is
-   trustworthy, not just fast.
-2. **A richer Mutation Plan** — show the *effect*, not just the call: file diffs,
+**Shipped:**
+
+- ✅ **Argument-aware classification** — the preview inspects a tool's *arguments*,
+  not just its name, and upgrades the verdict when they reveal a hidden mutation (a
+  `fetch` with `method:"DELETE"`, a mutating SQL verb, `rm` in a command). Fail-safe:
+  arguments can only make a call more restricted. This is what makes the preview
+  *trustworthy*, not just fast.
+
+**Planned, in order:**
+
+1. **A richer Mutation Plan** — show the *effect*, not just the call: file diffs,
    the exact HTTP request, the destructive command.
-3. **A transparent MCP proxy** — sit between any MCP agent (Claude Code, Cursor)
+2. **A transparent MCP proxy** — sit between any MCP agent (Claude Code, Cursor)
    and its tools, and preview the mutations flowing through — so you get "see it
    before it acts" without changing your setup.
-4. **Promote-to-live** — execute *exactly* the plan you approved, proven against a
+3. **Promote-to-live** — execute *exactly* the plan you approved, proven against a
    recorded ledger.
 
 ## License
