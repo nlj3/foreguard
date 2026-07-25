@@ -183,7 +183,8 @@ Record a plan without executing anything, then promote it whenever you're ready:
 ```sh
 # 1. record: dry-run a session to a ledger (nothing executes)
 foreguard proxy --ledger plan.jsonl -- npx -y @modelcontextprotocol/server-filesystem .
-# 2. review plan.jsonl however you like, then...
+# 2. review the plan — either read plan.jsonl, or preview what promote would replay:
+foreguard promote plan.jsonl --dry-run
 # 3. promote: replay the exact recorded mutations for real
 foreguard promote plan.jsonl -- npx -y @modelcontextprotocol/server-filesystem .
 ```
