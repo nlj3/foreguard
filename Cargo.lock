@@ -152,6 +152,7 @@ dependencies = [
  "kedge-core",
  "serde",
  "serde_json",
+ "tokio",
 ]
 
 [[package]]
