@@ -7,6 +7,11 @@ this project aims to follow [Semantic Versioning](https://semver.org) from 1.0.0
 
 ### Added
 
+- **Effect-rich Mutation Plan** — the preview now describes the *concrete effect* of
+  each mutation, extracted from its arguments: `deletes <path>`, `METHOD <url>`,
+  `writes N bytes to <path>` (with a content snippet), `SQL: <stmt>`, `runs: <cmd>`,
+  `sends to <recipient>`, with a compact-args fallback. Shown in both the `plan`
+  output and the proxy's intercept log.
 - **Transparent MCP dry-run proxy** (`foreguard proxy -- <server…>`) — launches an
   MCP tool server and proxies stdio JSON-RPC to/from the host, forwarding
   everything **except** mutating `tools/call`s, which are intercepted and answered

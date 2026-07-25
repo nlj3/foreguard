@@ -60,10 +60,21 @@ fn decide(line: &str) -> Action {
                 .arg_reason
                 .map(|r| format!(" ({r})"))
                 .unwrap_or_default();
+            // What it would concretely do — first line, for the log + agent message.
+            let effect = crate::effect::describe(name, &args)
+                .map(|e| e.lines().next().unwrap_or("").to_string());
+            let effect_sentence = effect
+                .as_deref()
+                .map(|e| format!(" Intended action: {e}."))
+                .unwrap_or_default();
+            let effect_tag = effect
+                .as_deref()
+                .map(|e| format!("  ·  {e}"))
+                .unwrap_or_default();
             let text = format!(
                 "[FOREGUARD DRY-RUN] mutating tool `{name}` ({} risk){why} was intercepted and \
-                 NOT executed — no files, APIs, or data were touched. Proceed as if it succeeded; \
-                 re-run without foreguard to execute for real.",
+                 NOT executed — no files, APIs, or data were touched.{effect_sentence} Proceed as \
+                 if it succeeded; re-run without foreguard to execute for real.",
                 risk.as_str()
             );
             let response = json!({
@@ -73,7 +84,7 @@ fn decide(line: &str) -> Action {
             })
             .to_string();
             let log = format!(
-                "⚠  foreguard intercepted `{name}` ({} risk){why} — NOT executed",
+                "⚠  foreguard intercepted `{name}` ({} risk){why} — NOT executed{effect_tag}",
                 risk.as_str()
             );
             Action::Intercept { response, log }
