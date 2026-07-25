@@ -27,6 +27,7 @@ use serde::{Deserialize, Serialize};
 mod classify;
 mod effect;
 mod proxy;
+mod taint;
 use classify::classify_call;
 
 #[derive(Parser)]
@@ -68,6 +69,12 @@ enum Command {
         /// terminal) and it stays a dry-run. Without this, all mutations are dry-run.
         #[arg(long)]
         approve: bool,
+        /// Context Foresight: taint the output of untrusted-source tools (web
+        /// fetches, inbox reads, …) and, when that data flows into a mutating call
+        /// — the agent "Rule of Two" violation — force human approval for that call,
+        /// even without `--approve`. Best-effort prompt-injection defense.
+        #[arg(long)]
+        taint: bool,
         /// The MCP server command to wrap, given after `--`.
         #[arg(last = true, required = true)]
         server: Vec<String>,
@@ -111,7 +118,11 @@ struct Plan {
 async fn main() -> Result<()> {
     match Cli::parse().command {
         Command::Plan { input, json } => cmd_plan(&input, json),
-        Command::Proxy { approve, server } => proxy::run_proxy(server, approve).await,
+        Command::Proxy {
+            approve,
+            taint,
+            server,
+        } => proxy::run_proxy(server, approve, taint).await,
     }
 }
 

@@ -7,6 +7,16 @@ this project aims to follow [Semantic Versioning](https://semver.org) from 1.0.0
 
 ### Added
 
+- **Context Foresight — dynamic taint tracking** (`foreguard proxy --taint -- <server…>`).
+  The proxy now tracks *provenance*: it marks the distinctive strings returned by
+  untrusted-source tools (web `fetch`, inbox reads, scrapers, RAG retrieval) and,
+  when any of that data reappears inside a **mutating** call, flags a **Rule-of-Two
+  violation** and forces the human-approval gate for that call — even without
+  `--approve`. This is a best-effort prompt-injection defense (OWASP LLM01): it
+  catches the common untrusted→mutation flow and fails safe (a tainted mutation with
+  no terminal attached is denied, i.e. dry-run), but — seeing only tool I/O, not the
+  model's reasoning — it does not claim to stop every injection. Implements Meta's
+  Agents "Rule of Two": untrusted input + a state-changing action requires a human.
 - **Promote-to-live** (`foreguard proxy --approve -- <server…>`) — the proxy now has
   an interactive approval mode that closes the trust loop: each mutation *pauses*,
   shows its concrete effect, and asks `[y/N]` on the controlling terminal. Approve
