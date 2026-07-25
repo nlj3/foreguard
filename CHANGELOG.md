@@ -5,115 +5,86 @@ this project aims to follow [Semantic Versioning](https://semver.org) from 1.0.0
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-07-25
+
+The theme is accuracy: making the preview show more, and making the verdict
+behind it correct against real servers rather than against fixtures.
+
 ### Added
 
-- **Namespace resolution from the catalogue.** MCP servers routinely namespace
-  their tools (`puppeteer_navigate`, `puppeteer_click`, …), which pushes the real
-  verb out of head position and made the whole family fail safe. puppeteer scored
-  7 of 7 intercepted, including `puppeteer_screenshot`, which mutates nothing.
+- **Diff previews for file mutations.** The preview used to say a file changes;
+  now it shows *what* changes. Foreguard reads the target as it exists right now
+  and diffs it against what the agent proposes, so you see the before and after
+  of a change that has not happened yet:
 
-  kedge-core deliberately will not guess at this, because a single name in
-  isolation carries no evidence that its first token is a namespace rather than a
-  verb. Guessing is exactly what produced the window bypass reverted in 0.3.1.
+  ```
+  ⚠  intercepted `write_file` (medium risk) — NOT executed
+      ┌─ config.toml
+      │   3 - host = "localhost"
+      │   3 + host = "0.0.0.0"
+      └─ +1, -1
+  ```
 
-  A catalogue does carry that evidence. When `tools/list` shows a head token
-  shared by at least three tools, that token is empirically a namespace, and the
+  Deletes show what would be lost; new files read as creations. The alignment is
+  a line-based longest-common-subsequence written from scratch, so the dependency
+  list stays at zero. It is read-only, capped at 512 KiB and 400 lines, honours
+  `NO_COLOR`, and only ever reads a path the agent already named itself.
+
+- **Capability-annotation awareness.** The proxy learns the `readOnlyHint` and
+  `destructiveHint` a server publishes in `tools/list` and applies them
+  **asymmetrically**: upgrades are always trusted, while a downgrade from
+  `readOnlyHint: true` requires our own lexical read to find the name benign and
+  the arguments to reveal nothing. A server declaring `readOnlyHint: true` on
+  `delete_file` changes nothing.
+
+  Trade, stated rather than buried: for an unrecognised name we now take the
+  server's word. That grants a hostile server nothing it did not already have,
+  since such a server can simply name a destructive tool `get_status`, which the
+  lexical pass forwards regardless. The threat this addresses is an honest server
+  with a hijacked agent, where declared hints are trustworthy input.
+
+- **Namespace resolution from the catalogue.** Servers routinely namespace
+  (`puppeteer_navigate`, `puppeteer_click`, …), which pushed the real verb out of
+  head position and made whole families fail safe: puppeteer scored 7 of 7
+  intercepted, including `puppeteer_screenshot`, which mutates nothing.
+
+  A head token shared by at least three tools is empirically a namespace, so the
   tool is judged as its unprefixed equivalent. Verified against live puppeteer,
-  which publishes **no annotations at all**: `puppeteer_screenshot` now passes
-  while all six genuinely interactive tools stay intercepted.
+  which publishes **no annotations at all**.
 
-  Three properties keep this from becoming the previous bypass:
-  - **Corroboration is required.** A lone `ns_` prefix has no siblings, earns
-    nothing, and `ns_get_frobnicate` keeps failing safe.
-  - **A verb is never a namespace.** Without this guard, a server exposing
-    `write_file`, `write_query` and `write_x` would make "write" look like a
-    namespace, and stripping it turns `write_query` into `query`, which reads as
-    safe. Caught by its own test before it shipped.
-  - **Stripping cannot add latitude.** It only makes a namespaced name behave
-    like the unprefixed tool of the same name already did.
+  Three properties keep this from becoming a bypass: corroboration is required,
+  so a lone `ns_` prefix earns nothing; a verb is never treated as a namespace,
+  or three `write_*` tools would turn `write_query` into `query`; and stripping
+  can only make a namespaced name behave like the unprefixed tool of that name
+  already did.
 
 ### Security
 
-- **Depends on kedge-core 0.3.1**, which reverts the two-token read-verb window
-  introduced in 0.3.0. Adversarial testing against a deliberately hostile MCP
-  server showed the window let a known-safe verb validate an unknown action, so
+- **Requires kedge-core 0.3.1.** 0.3.0 had briefly widened read-verb matching to
+  a two-token window, which let a known-safe verb validate an unknown action:
   `ns_get_frobnicate` and `x_get_nuke` were forwarded on the lexical pass alone,
-  with no annotation involved. That converts a fail-safe default into a
-  blocklist. A false positive is noise; that was a hole.
-
-  Consequence: namespaced read-only tools are false positives again. puppeteer
-  returns to 7 of 7 intercepted. `directory_tree` is still cleared, but by the
-  server's declared `readOnlyHint` rather than by the name.
-
-### Fixed
-
-- **Namespaced read-only tools are no longer flagged.** An ecosystem sweep of 10
-  real MCP servers (80 tools), scored against the `readOnlyHint` each server
-  publishes about itself, found zero false negatives and six false positives.
-  Every one traced to `kedge_core::classify`, not to Foreguard.
-
-  Read verbs were only recognised in head position, so a namespace prefix hid
-  the verb: `get_file` passed while `github_get_file` was intercepted. That is
-  why puppeteer scored 7 of 7 intercepted, including `puppeteer_screenshot`,
-  which mutates nothing. Fixed in kedge-core 0.3.0, which Foreguard now depends
-  on: a read verb counts at the head or directly behind one namespace prefix.
-
-  It cannot weaken deny-wins, because the dangerous-token checks return earlier;
-  `get_and_delete` never reaches that code. The window is two rather than
-  unbounded so an unrecognised head stays honest: `frobnicate_and_get` still
-  fails safe.
-
-  Vocabulary also gained `screenshot`, `echo`, and `tree`. `open` and `convert`
-  were deliberately left out as ambiguous, since `open_file` may create and
-  `convert` may write its output; declared hints cover those without guessing.
-
-  Measured on the same 80 tools: agreement **84.6% -> 89.7%** from the lexical
-  change alone, and **97.4%** once declared annotations are also applied. False
-  negatives remain **zero** throughout. The one remaining disagreement,
-  `trigger-long-running-operation`, declares itself read-only while "trigger"
-  reads as side-effecting; refusing that label is intended behaviour.
-
-### Added
-
-- **Capability-annotation awareness.** The proxy now learns the `readOnlyHint` and
-  `destructiveHint` a server publishes in its `tools/list` reply and takes them
-  into account when judging a later `tools/call`.
-
-  Found by running against a real `@modelcontextprotocol/server-filesystem`
-  rather than a fixture: `directory_tree` was being intercepted on every call
-  even though the server declares it read-only. Directory exploration is
-  constant, so that is the difference between a proxy people keep and one they
-  uninstall on day one.
-
-  Hints are honoured **asymmetrically**, which is the whole design:
-  - Upgrades are always trusted (`destructiveHint: true`, `readOnlyHint: false`).
-  - A downgrade from `readOnlyHint: true` applies **only** when our own lexical
-    read already finds the name benign, and only when the arguments reveal
-    nothing. A server declaring `readOnlyHint: true` on `delete_file` changes
-    nothing.
-
-  Distinguishing "unrecognised" from "recognised as dangerous" matters here,
-  because `classify` returns the same verdict for both. Rather than re-listing
-  kedge's vocabulary, which would drift, we ask kedge itself: prefix the name
-  with a known read verb and see whether deny-wins still trips.
-
-  Trade, stated rather than buried: for a name we do not recognise we now take
-  the server's word. A hostile server could pair an innocuous name with
-  `readOnlyHint: true` and be forwarded where fail-safe would have intercepted.
-  It cannot do so for anything that reads as dangerous, and taint tracking still
-  applies to whatever comes back.
-
-  The registry is best-effort by construction: a hint only exists after
-  `tools/list` has round-tripped, so a `tools/call` that beats it gets the
-  fail-safe verdict.
+  where 0.2.0 intercepted them. That turns a fail-safe default into a blocklist.
+  0.3.1 reverts it, and namespaces are now handled here instead, where the
+  catalogue provides the missing evidence.
 
 ### Testing
 
-- The adversarial battery is now a committed regression suite. Every case was
-  fired at the live filesystem server through the proxy and validated with a
-  positive control (the same `write_file`, with Foreguard removed, really does
-  overwrite the target). 15 name-obfuscation variants, 4 argument-hidden
-  mutations, plus the real server's 9 read-only and 4 destructive tools.
+- **Adversarial regression suite**, committed rather than run once. Every case
+  was fired at a live `@modelcontextprotocol/server-filesystem` through the proxy
+  and validated with a positive control: the same `write_file`, with Foreguard
+  removed, really does overwrite the target. 15 name-obfuscation variants
+  (case, separators, padding, compound names, a fullwidth homoglyph, a zero-width
+  space), 4 argument-hidden mutations, and the real server's read-only and
+  destructive catalogues.
+- **The async proxy loops are now testable and tested.** `run_proxy` read stdin
+  directly and asked the tty inline, so its pumping logic could not run without a
+  real process and terminal. Extracted generic over `AsyncBufRead`/`AsyncWrite`
+  with an injectable approver, and covered: read-only reaches the server while a
+  mutation does not, an approved mutation is forwarded byte-identical, a denied
+  one never arrives, untrusted data gates a mutation with `--approve` off, and
+  server output passes through verbatim while recording taint.
+- **Ecosystem validation.** 10 real MCP servers, 80 tools, scored against the
+  hints each server publishes about itself: **zero false negatives**.
 
 ## [0.5.0] — 2026-07-25
 
