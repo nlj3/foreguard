@@ -5,6 +5,18 @@ this project aims to follow [Semantic Versioning](https://semver.org) from 1.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Promote a recorded ledger** (`foreguard promote <ledger> -- <server…>`) — closes
+  the record→review→execute loop. Record a session in dry-run with `proxy --ledger`
+  (nothing executes), review the plan offline, then replay the exact recorded calls —
+  same tool, same arguments — against a live server. Foreguard acts as a minimal MCP
+  client (does the `initialize` handshake, then sends each `tools/call` verbatim and
+  prints the real response). Mutations only by default (read-only calls already ran);
+  `--all` includes reads. Each call is confirmed on the terminal unless `--yes`;
+  fail-safe — no confirmation, or no terminal, means skip. "What you previewed is what
+  runs," even hours later.
+
 ## [0.3.0] — 2026-07-24
 
 ### Added

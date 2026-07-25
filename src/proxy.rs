@@ -129,7 +129,7 @@ fn is_affirmative(answer: &str) -> bool {
 
 /// Ask the human on the controlling terminal (`/dev/tty`) to approve. Fail-safe: if
 /// there's no terminal, or anything goes wrong, the answer is "no" (dry-run).
-async fn approved_on_tty() -> bool {
+pub(crate) async fn approved_on_tty() -> bool {
     let answer = tokio::task::spawn_blocking(|| {
         use std::io::BufRead;
         let tty = std::fs::File::open("/dev/tty").ok()?;
