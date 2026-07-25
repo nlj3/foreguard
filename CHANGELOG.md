@@ -5,6 +5,34 @@ this project aims to follow [Semantic Versioning](https://semver.org) from 1.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Namespaced read-only tools are no longer flagged.** An ecosystem sweep of 10
+  real MCP servers (80 tools), scored against the `readOnlyHint` each server
+  publishes about itself, found zero false negatives and six false positives.
+  Every one traced to `kedge_core::classify`, not to Foreguard.
+
+  Read verbs were only recognised in head position, so a namespace prefix hid
+  the verb: `get_file` passed while `github_get_file` was intercepted. That is
+  why puppeteer scored 7 of 7 intercepted, including `puppeteer_screenshot`,
+  which mutates nothing. Fixed in kedge-core 0.3.0, which Foreguard now depends
+  on: a read verb counts at the head or directly behind one namespace prefix.
+
+  It cannot weaken deny-wins, because the dangerous-token checks return earlier;
+  `get_and_delete` never reaches that code. The window is two rather than
+  unbounded so an unrecognised head stays honest: `frobnicate_and_get` still
+  fails safe.
+
+  Vocabulary also gained `screenshot`, `echo`, and `tree`. `open` and `convert`
+  were deliberately left out as ambiguous, since `open_file` may create and
+  `convert` may write its output; declared hints cover those without guessing.
+
+  Measured on the same 80 tools: agreement **84.6% -> 89.7%** from the lexical
+  change alone, and **97.4%** once declared annotations are also applied. False
+  negatives remain **zero** throughout. The one remaining disagreement,
+  `trigger-long-running-operation`, declares itself read-only while "trigger"
+  reads as side-effecting; refusing that label is intended behaviour.
+
 ### Added
 
 - **Capability-annotation awareness.** The proxy now learns the `readOnlyHint` and

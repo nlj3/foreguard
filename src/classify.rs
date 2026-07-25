@@ -448,13 +448,27 @@ mod annotations {
 
     #[test]
     fn a_declared_read_only_unrecognised_tool_is_honoured() {
-        // The real bug: the filesystem server declares directory_tree read-only,
-        // and nothing in the name suggests otherwise.
+        // `sequentialthinking` is a single unrecognised token: no read verb, no
+        // dangerous verb, nothing for the lexical pass to work with. Exactly the
+        // case annotations exist to cover.
         assert!(
-            verdict("directory_tree", None),
+            verdict("sequentialthinking", None),
             "unannotated, fail-safe holds"
         );
-        assert!(!verdict("directory_tree", ro()), "annotation is honoured");
+        assert!(
+            !verdict("sequentialthinking", ro()),
+            "annotation is honoured"
+        );
+    }
+
+    /// `directory_tree` used to need an annotation to escape being flagged. Since
+    /// the classifier learned to see a read verb behind a namespace prefix, it is
+    /// read-only on its own and the annotation merely agrees. Kept as a regression
+    /// guard, because this is the tool that started the whole investigation.
+    #[test]
+    fn directory_tree_no_longer_depends_on_an_annotation() {
+        assert!(!verdict("directory_tree", None), "now handled lexically");
+        assert!(!verdict("directory_tree", ro()));
     }
 
     #[test]
