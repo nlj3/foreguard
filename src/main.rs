@@ -26,6 +26,7 @@ use serde::{Deserialize, Serialize};
 
 mod classify;
 mod effect;
+mod ledger;
 mod proxy;
 mod taint;
 use classify::classify_call;
@@ -75,6 +76,11 @@ enum Command {
         /// even without `--approve`. Best-effort prompt-injection defense.
         #[arg(long)]
         taint: bool,
+        /// Append a JSON-lines audit trail of every tool call and Foreguard
+        /// decision (forwarded / dry-run / executed / denied, with taint verdicts)
+        /// to this file.
+        #[arg(long, value_name = "PATH")]
+        ledger: Option<std::path::PathBuf>,
         /// The MCP server command to wrap, given after `--`.
         #[arg(last = true, required = true)]
         server: Vec<String>,
@@ -121,8 +127,9 @@ async fn main() -> Result<()> {
         Command::Proxy {
             approve,
             taint,
+            ledger,
             server,
-        } => proxy::run_proxy(server, approve, taint).await,
+        } => proxy::run_proxy(server, approve, taint, ledger).await,
     }
 }
 

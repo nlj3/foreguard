@@ -160,11 +160,21 @@ them is being built.
   provenance of tool output; when data from an untrusted source (web, inbox, RAG)
   reaches a mutating call, flags a **Rule-of-Two violation** and forces approval.
   Best-effort prompt-injection defense (OWASP LLM01); fails safe.
+- ✅ **Recorded ledger** (`foreguard proxy --ledger <path>`) — append-only JSONL
+  audit trail of every tool call: what was asked, how it was classified, the taint
+  verdict, and what happened (forwarded / dry-run / executed / denied). Greppable
+  with `jq`; flushed per line so a crash keeps everything up to that point.
 
-**Planned:**
+Add `--ledger run.jsonl` to any proxy invocation and inspect the session:
 
-- **Recorded ledger** — persist every previewed/approved/executed call (and every
-  taint verdict) to an append-only log, so a run is auditable and replayable.
+```console
+$ jq -c '{tool,kind,taint,decision}' run.jsonl
+{"tool":"fetch","kind":"read-only","taint":null,"decision":"forwarded"}
+{"tool":"send_email","kind":"mutation","taint":"attacker@evil.com","decision":"denied"}
+```
+
+**Next:** *promote a recorded ledger* — replay the exact approved calls from a prior
+session against a live server (the ledger already captures everything needed).
 
 ## License
 
