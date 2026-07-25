@@ -18,7 +18,7 @@ path = "src/main.rs"
 [dependencies]
 # Foreguard is *extracted from*, not forked from, kedge — it reuses kedge's
 # fail-safe, deny-wins tool classifier as its engine.
-kedge-core = "0.3"
+kedge-core = "0.3.1"
 clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
