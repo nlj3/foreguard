@@ -114,13 +114,14 @@ them is being built.
   MCP host and its tool server; read-only calls forward for real, mutating calls
   are intercepted and previewed. Works with Claude Code / Cursor / Cline with no
   agent changes.
+- ✅ **Effect-rich Mutation Plan** — the preview shows *what* a mutation would do,
+  not just that it mutates: `deletes /etc/passwd`, `DELETE https://api/…`, `writes
+  N bytes to config.toml:` (with a content snippet), `sends to all@company.com`.
 
-**Planned, in order:**
+**Planned:**
 
-1. **A richer Mutation Plan** — show the *effect*, not just the call: file diffs,
-   the exact HTTP request, the destructive command.
-2. **Promote-to-live** — execute *exactly* the plan you approved, proven against a
-   recorded ledger.
+- **Promote-to-live** — execute *exactly* the plan you approved, proven against a
+  recorded ledger.
 
 ## License
 

@@ -25,6 +25,7 @@ use kedge_core::ToolSafety;
 use serde::{Deserialize, Serialize};
 
 mod classify;
+mod effect;
 mod proxy;
 use classify::classify_call;
 
@@ -87,6 +88,9 @@ struct PlanEntry {
     /// Present when the *arguments* (not the name) revealed the mutation.
     #[serde(skip_serializing_if = "Option::is_none")]
     reason: Option<String>,
+    /// What the mutation would concretely do (e.g. "deletes /etc/passwd").
+    #[serde(skip_serializing_if = "Option::is_none")]
+    effect: Option<String>,
     arguments: serde_json::Value,
 }
 
@@ -150,12 +154,17 @@ fn build_plan(calls: &[ToolCall]) -> Plan {
                 ("intercept", true, Some(risk.as_str()))
             }
         };
+        // Describe the concrete effect only for the calls we'd intercept.
+        let effect = mutating
+            .then(|| effect::describe(&c.name, &c.arguments))
+            .flatten();
         entries.push(PlanEntry {
             tool: c.name.clone(),
             verdict,
             mutating,
             risk,
             reason: v.arg_reason,
+            effect,
             arguments: c.arguments.clone(),
         });
     }
@@ -181,6 +190,9 @@ fn print_plan(plan: &Plan) {
                 e.risk.unwrap_or("?"),
                 why
             );
+            if let Some(eff) = &e.effect {
+                println!("       → {eff}");
+            }
         } else {
             println!("  ✔  {:<26} read-only — would run for real", e.tool);
         }
