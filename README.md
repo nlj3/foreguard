@@ -87,6 +87,18 @@ success** — the agent keeps planning, nothing gets written or deleted:
 No change to your agent, no change to your prompts — just put `foreguard proxy --`
 in front of the server.
 
+**Promote-to-live** — add `--approve` and the proxy stops auto-dry-running: each
+mutation pauses and asks you, showing exactly what it would do. Approve and the
+*same* call executes for real; deny (or run headless) and it stays a dry-run.
+
+```text
+⚠  `delete_file` (high risk)  ·  deletes /etc/passwd
+    Execute this for real? [y/N] ▊
+```
+
+Only an explicit `y`/`yes` runs it — a bare Enter, or no terminal at all, means no.
+What you previewed is exactly what runs.
+
 ### One-shot: preview a batch of tool calls
 
 ```sh
@@ -117,11 +129,15 @@ them is being built.
 - ✅ **Effect-rich Mutation Plan** — the preview shows *what* a mutation would do,
   not just that it mutates: `deletes /etc/passwd`, `DELETE https://api/…`, `writes
   N bytes to config.toml:` (with a content snippet), `sends to all@company.com`.
+- ✅ **Promote-to-live** (`foreguard proxy --approve`) — the trust loop, closed: each
+  mutation pauses for a `[y/N]` on your terminal, and approving forwards the *exact*
+  call you saw to execute for real. Fail-safe — only an explicit `y` runs; no
+  terminal means dry-run. What you previewed is what runs.
 
 **Planned:**
 
-- **Promote-to-live** — execute *exactly* the plan you approved, proven against a
-  recorded ledger.
+- **Recorded ledger** — persist every previewed/approved/executed call to an
+  append-only log, so a run is auditable and replayable after the fact.
 
 ## License
 

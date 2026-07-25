@@ -7,6 +7,13 @@ this project aims to follow [Semantic Versioning](https://semver.org) from 1.0.0
 
 ### Added
 
+- **Promote-to-live** (`foreguard proxy --approve -- <server…>`) — the proxy now has
+  an interactive approval mode that closes the trust loop: each mutation *pauses*,
+  shows its concrete effect, and asks `[y/N]` on the controlling terminal. Approve
+  and the **exact** call you previewed is forwarded to execute for real; deny — or
+  run with no terminal attached — and it stays a dry-run. Fail-safe: only an explicit
+  `y`/`yes` executes; a bare Enter, EOF, or missing `/dev/tty` all mean "no". Without
+  `--approve`, every mutation is dry-run as before.
 - **Effect-rich Mutation Plan** — the preview now describes the *concrete effect* of
   each mutation, extracted from its arguments: `deletes <path>`, `METHOD <url>`,
   `writes N bytes to <path>` (with a content snippet), `SQL: <stmt>`, `runs: <cmd>`,
