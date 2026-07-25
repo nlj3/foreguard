@@ -220,3 +220,121 @@ mod tests {
         );
     }
 }
+
+/// Adversarial regression suite.
+///
+/// These are not hypotheticals. Every case here was fired at a live
+/// `@modelcontextprotocol/server-filesystem` through the proxy, and the run was
+/// validated with a positive control: the same `write_file` call, with Foreguard
+/// removed from the path, really does overwrite the target. So each variant below
+/// represents a mutation that would have landed on disk had the classifier let it
+/// through.
+///
+/// Two of these are caught by the fail-safe default rather than by recognising the
+/// trick (the fullwidth homoglyph and the zero-width space). That is worth stating
+/// plainly: the outcome is correct because anything unrecognised is treated as
+/// mutating, not because Foreguard normalises Unicode. Fail-safe covers the
+/// attacks nobody enumerated, which is the whole reason it is the default.
+#[cfg(test)]
+mod evasion {
+    use super::*;
+    use serde_json::json;
+
+    fn mutating(name: &str) -> bool {
+        classify_call(name, &json!({"path": "/tmp/x", "content": "E"}))
+            .safety
+            .is_mutating()
+    }
+
+    /// Every one of these is really a write. None may be classified read-only.
+    #[test]
+    fn name_obfuscation_never_downgrades_a_write() {
+        let variants = [
+            ("plain", "write_file"),
+            ("upper", "WRITE_FILE"),
+            ("title", "Write_File"),
+            ("mixed", "wRiTe_FiLe"),
+            ("hyphen", "write-file"),
+            ("dot", "write.file"),
+            ("camel", "writeFile"),
+            ("space", "write file"),
+            ("padded", "  write_file  "),
+            ("compound, read verb first", "read_and_write_file"),
+            ("compound, get first", "get_or_delete_file"),
+            ("reassuring prefix", "safe_write_file"),
+            ("lying prefix", "definitely_read_only_write_file"),
+            ("fullwidth homoglyph", "ｗrite_file"),
+            ("zero-width space", "write\u{200b}file"),
+        ];
+        for (label, name) in variants {
+            assert!(
+                mutating(name),
+                "ESCAPE: {label} ({name:?}) was classified read-only; a real write would have executed"
+            );
+        }
+    }
+
+    /// A read-looking name whose *arguments* carry the mutation.
+    #[test]
+    fn argument_hidden_mutations_never_downgrade() {
+        let cases = [
+            (
+                "http delete",
+                "fetch",
+                json!({"url": "https://x", "method": "DELETE"}),
+            ),
+            ("sql drop", "query", json!({"sql": "DROP TABLE users"})),
+            (
+                "shell rm",
+                "check",
+                json!({"command": "rm -rf /tmp/sandbox"}),
+            ),
+            (
+                "operation field",
+                "read_thing",
+                json!({"operation": "delete", "path": "/tmp/k"}),
+            ),
+        ];
+        for (label, name, args) in cases {
+            assert!(
+                classify_call(name, &args).safety.is_mutating(),
+                "ESCAPE: {label} ({name}) was classified read-only"
+            );
+        }
+    }
+
+    /// The other direction. Genuinely read-only tools from the real filesystem
+    /// server must not be flagged, or the proxy is too noisy to leave installed.
+    #[test]
+    fn real_read_only_tools_are_not_false_positives() {
+        for name in [
+            "read_file",
+            "read_text_file",
+            "read_media_file",
+            "read_multiple_files",
+            "list_directory",
+            "list_directory_with_sizes",
+            "search_files",
+            "get_file_info",
+            "list_allowed_directories",
+        ] {
+            assert!(
+                !classify_call(name, &json!({"path": "/tmp/x"}))
+                    .safety
+                    .is_mutating(),
+                "FALSE POSITIVE: {name} is read-only on the real server but was intercepted"
+            );
+        }
+    }
+
+    /// The real server's genuinely destructive tools. These must always intercept.
+    #[test]
+    fn real_mutating_tools_are_always_caught() {
+        for name in ["write_file", "edit_file", "create_directory", "move_file"] {
+            assert!(
+                mutating(name),
+                "ESCAPE: {name} mutates on the real server but was let through"
+            );
+        }
+    }
+}
