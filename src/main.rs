@@ -27,6 +27,7 @@ use serde::{Deserialize, Serialize};
 mod classify;
 mod effect;
 mod ledger;
+mod mcp;
 mod promote;
 mod proxy;
 mod taint;
