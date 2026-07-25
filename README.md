@@ -173,8 +173,20 @@ $ jq -c '{tool,kind,taint,decision}' run.jsonl
 {"tool":"send_email","kind":"mutation","taint":"attacker@evil.com","decision":"denied"}
 ```
 
-**Next:** *promote a recorded ledger* — replay the exact approved calls from a prior
-session against a live server (the ledger already captures everything needed).
+- ✅ **Promote a recorded ledger** (`foreguard promote <ledger> -- <server>`) — closes
+  the loop: record a plan in dry-run, review it offline, then replay the *exact* calls
+  for real. Foreguard becomes a minimal MCP client (handshake + verbatim `tools/call`).
+  Mutations only by default; each confirmed on the terminal unless `--yes`; fail-safe.
+
+Record a plan without executing anything, then promote it whenever you're ready:
+
+```sh
+# 1. record: dry-run a session to a ledger (nothing executes)
+foreguard proxy --ledger plan.jsonl -- npx -y @modelcontextprotocol/server-filesystem .
+# 2. review plan.jsonl however you like, then...
+# 3. promote: replay the exact recorded mutations for real
+foreguard promote plan.jsonl -- npx -y @modelcontextprotocol/server-filesystem .
+```
 
 ## License
 

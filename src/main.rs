@@ -27,6 +27,7 @@ use serde::{Deserialize, Serialize};
 mod classify;
 mod effect;
 mod ledger;
+mod promote;
 mod proxy;
 mod taint;
 use classify::classify_call;
@@ -85,6 +86,25 @@ enum Command {
         #[arg(last = true, required = true)]
         server: Vec<String>,
     },
+    /// Promote a recorded ledger: replay its calls against a live server.
+    ///
+    /// Record a session with `proxy --ledger plan.jsonl` (dry-run, nothing
+    /// executes), review it, then run the exact calls for real:
+    /// `foreguard promote plan.jsonl -- npx -y @modelcontextprotocol/server-filesystem .`
+    /// Mutations only by default; each is confirmed on the terminal unless `--yes`.
+    Promote {
+        /// Path to a ledger file written by `proxy --ledger`.
+        ledger: std::path::PathBuf,
+        /// Also replay read-only calls (they already ran in the original session).
+        #[arg(long)]
+        all: bool,
+        /// Skip the per-call confirmation — you already reviewed the ledger.
+        #[arg(long)]
+        yes: bool,
+        /// The MCP server command to run against, given after `--`.
+        #[arg(last = true, required = true)]
+        server: Vec<String>,
+    },
 }
 
 /// One tool call an agent wants to make.
@@ -130,6 +150,12 @@ async fn main() -> Result<()> {
             ledger,
             server,
         } => proxy::run_proxy(server, approve, taint, ledger).await,
+        Command::Promote {
+            ledger,
+            all,
+            yes,
+            server,
+        } => promote::run_promote(ledger, server, all, yes).await,
     }
 }
 
