@@ -5,6 +5,16 @@ this project aims to follow [Semantic Versioning](https://semver.org) from 1.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Recorded ledger** (`foreguard proxy --ledger <path>`) — append a JSON line per
+  tool call to an audit trail: timestamp, tool, kind (read-only/mutation), risk,
+  concrete effect, taint verdict, and the decision (`forwarded` / `dry-run` /
+  `executed` / `denied`), plus the arguments. Flushed per line, so a crash still
+  leaves every prior decision on disk. Answers "what did my agent actually try to do,
+  and what did we let through?" — greppable with `jq`. Honest scope: an audit log,
+  not a tamper-proof one.
+
 ## [0.2.0] — 2026-07-24
 
 ### Added

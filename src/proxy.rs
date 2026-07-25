@@ -21,7 +21,10 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::Command;
 use tokio::sync::Mutex;
 
+use std::path::PathBuf;
+
 use crate::classify::classify_call;
+use crate::ledger::{now_millis, Entry, Ledger};
 use crate::taint::TaintTracker;
 use kedge_core::ToolSafety;
 
@@ -34,8 +37,15 @@ enum Inspection {
     Mutation(Preview),
 }
 
-/// Everything needed to log, prompt for, or synthesize a response to a mutation.
+/// Everything needed to log, prompt for, audit, or synthesize a response to a
+/// mutation.
 struct Preview {
+    /// The tool name.
+    tool: String,
+    /// Risk tier, `"medium"` or `"high"`.
+    risk: &'static str,
+    /// The concrete effect, e.g. `deletes /etc/passwd` (if describable).
+    effect: Option<String>,
     /// The synthetic dry-run success to return when the call is NOT executed.
     synthetic: String,
     /// One-line stderr log (dry-run mode).
@@ -102,6 +112,9 @@ fn inspect(line: &str) -> Inspection {
         risk.as_str()
     );
     Inspection::Mutation(Preview {
+        tool: name.to_string(),
+        risk: risk.as_str(),
+        effect,
         synthetic,
         log,
         prompt,
@@ -196,7 +209,14 @@ fn collect_text(v: &Value, out: &mut String) {
 ///   untrusted-source tools and, when that data reaches a mutating call — the
 ///   "Rule of Two" violation — forces the approval gate for that call even if
 ///   `approve` is off. Untainted mutations follow the `approve` setting.
-pub async fn run_proxy(server: Vec<String>, approve: bool, taint: bool) -> Result<()> {
+/// - `ledger_path = Some(_)`: append a JSON line per tool call to that file — an
+///   audit trail of every decision (see [`crate::ledger`]).
+pub async fn run_proxy(
+    server: Vec<String>,
+    approve: bool,
+    taint: bool,
+    ledger_path: Option<PathBuf>,
+) -> Result<()> {
     let (program, args) = server
         .split_first()
         .context("`foreguard proxy` needs a server command after `--`")?;
@@ -216,6 +236,20 @@ pub async fn run_proxy(server: Vec<String>, approve: bool, taint: bool) -> Resul
     let host_out = Arc::new(Mutex::new(tokio::io::stdout()));
     // The taint sensor is shared by both directions (records results, checks calls).
     let tracker = taint.then(|| Arc::new(Mutex::new(TaintTracker::new())));
+
+    // Audit ledger — owned solely by the host→server task (the one that decides).
+    let mut ledger = match &ledger_path {
+        Some(path) => {
+            Some(Ledger::open(path).with_context(|| format!("opening ledger {}", path.display()))?)
+        }
+        None => None,
+    };
+    if let Some(path) = &ledger_path {
+        eprintln!(
+            "foreguard: recording an audit ledger to {}.",
+            path.display()
+        );
+    }
 
     let mode = if taint {
         "Context Foresight — untrusted tool output is tainted; any mutation it reaches forces your \
@@ -244,6 +278,8 @@ pub async fn run_proxy(server: Vec<String>, approve: bool, taint: bool) -> Resul
                     if !forward_line(&mut server_in, &l).await {
                         break;
                     }
+                    // Audit read-only tool calls (non-tool traffic has no `meta`).
+                    log_read(&mut ledger, &meta);
                 }
                 Inspection::Mutation(p) => {
                     // Did untrusted data flow into this mutation? (Rule-of-Two check.)
@@ -264,16 +300,26 @@ pub async fn run_proxy(server: Vec<String>, approve: bool, taint: bool) -> Resul
                         eprint!("{}", p.prompt);
                         if approved_on_tty().await {
                             eprintln!("✔  approved — executing for real");
-                            if !forward_line(&mut server_in, &l).await {
+                            let ok = forward_line(&mut server_in, &l).await;
+                            log_mutation(
+                                &mut ledger,
+                                &meta,
+                                &p,
+                                taint_reason.as_deref(),
+                                "executed",
+                            );
+                            if !ok {
                                 break;
                             }
                         } else {
                             eprintln!("✗  denied — dry-run, nothing executed");
                             write_line(&host_out_a, &p.synthetic).await;
+                            log_mutation(&mut ledger, &meta, &p, taint_reason.as_deref(), "denied");
                         }
                     } else {
                         eprintln!("{}", p.log);
                         write_line(&host_out_a, &p.synthetic).await;
+                        log_mutation(&mut ledger, &meta, &p, taint_reason.as_deref(), "dry-run");
                     }
                 }
             }
@@ -300,6 +346,45 @@ pub async fn run_proxy(server: Vec<String>, approve: bool, taint: bool) -> Resul
     tokio::join!(host_to_server, server_to_host);
     let _ = child.kill().await;
     Ok(())
+}
+
+/// Append a read-only tool call to the ledger (no-op if auditing is off, or the
+/// message wasn't a tool call).
+fn log_read(ledger: &mut Option<Ledger>, meta: &Option<(String, String, Value)>) {
+    if let (Some(led), Some((_, name, args))) = (ledger, meta) {
+        led.append(&Entry {
+            ts: now_millis(),
+            tool: name.as_str(),
+            kind: "read-only",
+            risk: None,
+            effect: None,
+            taint: None,
+            decision: "forwarded",
+            arguments: args,
+        });
+    }
+}
+
+/// Append a mutation decision to the ledger (no-op if auditing is off).
+fn log_mutation(
+    ledger: &mut Option<Ledger>,
+    meta: &Option<(String, String, Value)>,
+    p: &Preview,
+    taint: Option<&str>,
+    decision: &str,
+) {
+    if let (Some(led), Some((_, _, args))) = (ledger, meta) {
+        led.append(&Entry {
+            ts: now_millis(),
+            tool: p.tool.as_str(),
+            kind: "mutation",
+            risk: Some(p.risk),
+            effect: p.effect.as_deref(),
+            taint,
+            decision,
+            arguments: args,
+        });
+    }
 }
 
 /// Forward one raw line to the server's stdin, newline-terminated and flushed.
