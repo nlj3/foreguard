@@ -5,6 +5,8 @@ this project aims to follow [Semantic Versioning](https://semver.org) from 1.0.0
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-07-24
+
 ### Added
 
 - **Promote a recorded ledger** (`foreguard promote <ledger> -- <server…>`) — closes
@@ -16,6 +18,17 @@ this project aims to follow [Semantic Versioning](https://semver.org) from 1.0.0
   `--all` includes reads. Each call is confirmed on the terminal unless `--yes`;
   fail-safe — no confirmation, or no terminal, means skip. "What you previewed is what
   runs," even hours later.
+  - `--dry-run` — print the replay plan (tools, effects, prior verdicts) and exit,
+    launching nothing.
+  - The MCP client advertises protocol version `2025-06-18` and reports the version
+    the server negotiates back; a rejected `initialize` fails with a clear error.
+
+### Changed
+
+- **Broader taint sources & bounded extraction** — the untrusted-source heuristic now
+  covers more content-pulling tools (web search, RSS/feeds, Slack/Discord/Telegram/SMS,
+  attachments, uploads, …), and token extraction from a result is bounded so a hostile
+  page can't turn a single response into unbounded work.
 
 ## [0.3.0] — 2026-07-24
 

@@ -87,18 +87,61 @@ impl TaintTracker {
 pub fn is_untrusted_source(name: &str) -> bool {
     let n = name.to_ascii_lowercase();
     const SOURCES: &[&str] = &[
-        "fetch", "http", "curl", "wget", "browse", "scrape", "crawl", "download", "web", "url",
-        "rss", "visit", "get_page", "read_url", "open_url", "email", "gmail", "inbox", "mail",
-        "message", "comment", "review", "webhook", "retrieve", "rag",
+        // web / HTTP
+        "fetch",
+        "http",
+        "curl",
+        "wget",
+        "browse",
+        "scrape",
+        "crawl",
+        "download",
+        "web",
+        "url",
+        "rss",
+        "feed",
+        "visit",
+        "get_page",
+        "read_url",
+        "open_url",
+        "search",
+        "google",
+        "bing",
+        // messaging / external comms
+        "email",
+        "gmail",
+        "inbox",
+        "mail",
+        "message",
+        "comment",
+        "review",
+        "webhook",
+        "slack",
+        "discord",
+        "telegram",
+        "sms",
+        "chat",
+        "reddit",
+        "twitter",
+        // retrieval / user-supplied content
+        "retrieve",
+        "rag",
+        "attachment",
+        "upload",
     ];
     SOURCES.iter().any(|k| n.contains(k))
 }
+
+/// Bound on how many whitespace tokens we scan from one result — a hostile page
+/// can't make token extraction unbounded work.
+const MAX_TOKENS_SCANNED: usize = 20_000;
 
 /// Pull the "distinctive" tokens out of untrusted text — the ones an injection
 /// would smuggle into a later call (URLs, emails, paths, long/unusual strings) —
 /// while skipping ordinary words that would cause false positives.
 fn distinctive_tokens(text: &str) -> HashSet<String> {
     text.split_whitespace()
+        .take(MAX_TOKENS_SCANNED)
         .map(clean)
         .filter(|t| is_distinctive(t))
         .map(str::to_string)
@@ -143,8 +186,19 @@ mod tests {
         assert!(is_untrusted_source("fetch"));
         assert!(is_untrusted_source("web_search"));
         assert!(is_untrusted_source("gmail_read_inbox"));
+        assert!(is_untrusted_source("slack_read_channel"));
+        assert!(is_untrusted_source("read_attachment"));
         assert!(!is_untrusted_source("write_file"));
         assert!(!is_untrusted_source("delete_record"));
+    }
+
+    #[test]
+    fn token_extraction_is_bounded_on_huge_results() {
+        // A hostile page of many tokens must not blow up extraction; the tainted set
+        // is capped and the scan is bounded.
+        let huge = "word ".repeat(100_000);
+        let toks = distinctive_tokens(&huge);
+        assert!(toks.is_empty(), "short common words aren't distinctive");
     }
 
     #[test]

@@ -20,6 +20,11 @@ use serde_json::{json, Value};
 use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncWrite, AsyncWriteExt, BufReader, Lines};
 use tokio::process::{ChildStdin, ChildStdout, Command};
 
+/// The MCP protocol version we advertise. Servers negotiate: a server that speaks a
+/// different version answers `initialize` with the one it will use, and we proceed
+/// with that — `tools/call` is stable across these revisions.
+const PROTOCOL_VERSION: &str = "2025-06-18";
+
 /// One recorded call selected for replay, plus context for the review display.
 struct Call {
     tool: String,
@@ -55,8 +60,34 @@ fn select_calls(contents: &str, include_read_only: bool) -> Vec<Call> {
         .collect()
 }
 
+/// A one-line review string for a call: `tool — effect  [recorded: …]  ⛔ tainted…`.
+fn describe_call(c: &Call) -> String {
+    let effect = c
+        .effect
+        .as_deref()
+        .map(|e| format!(" — {e}"))
+        .unwrap_or_default();
+    let prior = c
+        .prior
+        .as_deref()
+        .map(|d| format!("  [recorded: {d}]"))
+        .unwrap_or_default();
+    let taint = c
+        .taint
+        .as_deref()
+        .map(|t| format!("  ⛔ tainted by {t}"))
+        .unwrap_or_default();
+    format!("{}{}{}{}", c.tool, effect, prior, taint)
+}
+
 /// Replay the selected calls from `ledger` against the live `server`.
-pub async fn run_promote(ledger: PathBuf, server: Vec<String>, all: bool, yes: bool) -> Result<()> {
+pub async fn run_promote(
+    ledger: PathBuf,
+    server: Vec<String>,
+    all: bool,
+    yes: bool,
+    dry_run: bool,
+) -> Result<()> {
     let contents = std::fs::read_to_string(&ledger)
         .with_context(|| format!("reading ledger {}", ledger.display()))?;
     let calls = select_calls(&contents, all);
@@ -66,6 +97,19 @@ pub async fn run_promote(ledger: PathBuf, server: Vec<String>, all: bool, yes: b
             ledger.display(),
             if all { "tool calls" } else { "mutations" }
         );
+        return Ok(());
+    }
+
+    // --dry-run: show exactly what would be replayed, launch nothing, execute nothing.
+    if dry_run {
+        eprintln!(
+            "foreguard: replay plan from {} — {} call(s), DRY RUN (nothing will execute):",
+            ledger.display(),
+            calls.len()
+        );
+        for c in &calls {
+            eprintln!("  ▶  {}", describe_call(c));
+        }
         return Ok(());
     }
 
@@ -95,22 +139,7 @@ pub async fn run_promote(ledger: PathBuf, server: Vec<String>, all: bool, yes: b
     let (mut promoted, mut skipped) = (0usize, 0usize);
     let mut id = 1000i64;
     for c in &calls {
-        let effect = c
-            .effect
-            .as_deref()
-            .map(|e| format!(" — {e}"))
-            .unwrap_or_default();
-        let prior = c
-            .prior
-            .as_deref()
-            .map(|d| format!("  [recorded: {d}]"))
-            .unwrap_or_default();
-        let taint = c
-            .taint
-            .as_deref()
-            .map(|t| format!("  ⛔ tainted by {t}"))
-            .unwrap_or_default();
-        eprintln!("\n▶  {}{}{}{}", c.tool, effect, prior, taint);
+        eprintln!("\n▶  {}", describe_call(c));
 
         if !yes {
             eprint!("    Execute this for real now? [y/N] ");
@@ -142,13 +171,26 @@ async fn initialize(
     let init = json!({
         "jsonrpc": "2.0", "id": 1, "method": "initialize",
         "params": {
-            "protocolVersion": "2024-11-05",
+            "protocolVersion": PROTOCOL_VERSION,
             "capabilities": {},
             "clientInfo": { "name": "foreguard", "version": env!("CARGO_PKG_VERSION") }
         }
     });
     send(stdin, &init).await?;
-    await_response(stdout, 1).await?;
+    let resp = await_response(stdout, 1).await?;
+    if let Some(err) = resp.get("error") {
+        bail!("server rejected initialize: {err}");
+    }
+    // Report the negotiated version the server chose (may differ from ours).
+    let version = resp
+        .pointer("/result/protocolVersion")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown");
+    let name = resp
+        .pointer("/result/serverInfo/name")
+        .and_then(Value::as_str)
+        .unwrap_or("server");
+    eprintln!("foreguard: connected to `{name}` (MCP {version}).");
     send(
         stdin,
         &json!({ "jsonrpc": "2.0", "method": "notifications/initialized" }),

@@ -101,8 +101,12 @@ enum Command {
         /// Skip the per-call confirmation — you already reviewed the ledger.
         #[arg(long)]
         yes: bool,
-        /// The MCP server command to run against, given after `--`.
-        #[arg(last = true, required = true)]
+        /// Print the replay plan and exit — launch nothing, execute nothing.
+        #[arg(long)]
+        dry_run: bool,
+        /// The MCP server command to run against, given after `--` (not needed with
+        /// `--dry-run`).
+        #[arg(last = true)]
         server: Vec<String>,
     },
 }
@@ -154,8 +158,9 @@ async fn main() -> Result<()> {
             ledger,
             all,
             yes,
+            dry_run,
             server,
-        } => promote::run_promote(ledger, server, all, yes).await,
+        } => promote::run_promote(ledger, server, all, yes, dry_run).await,
     }
 }
 
