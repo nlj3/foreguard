@@ -25,6 +25,7 @@ use kedge_core::ToolSafety;
 use serde::{Deserialize, Serialize};
 
 mod classify;
+mod proxy;
 use classify::classify_call;
 
 #[derive(Parser)]
@@ -53,6 +54,17 @@ enum Command {
         /// Emit the plan as JSON instead of the human-readable preview.
         #[arg(long)]
         json: bool,
+    },
+    /// Run as a transparent MCP dry-run proxy in front of a tool server.
+    ///
+    /// Point an MCP host (Claude Code, Cursor, …) at this instead of the server:
+    /// `foreguard proxy -- npx -y @modelcontextprotocol/server-filesystem .`
+    /// Read-only tools run for real; mutating tool calls are intercepted and
+    /// previewed — nothing mutating executes.
+    Proxy {
+        /// The MCP server command to wrap, given after `--`.
+        #[arg(last = true, required = true)]
+        server: Vec<String>,
     },
 }
 
@@ -86,9 +98,11 @@ struct Plan {
     intercepted: usize,
 }
 
-fn main() -> Result<()> {
+#[tokio::main(flavor = "current_thread")]
+async fn main() -> Result<()> {
     match Cli::parse().command {
         Command::Plan { input, json } => cmd_plan(&input, json),
+        Command::Proxy { server } => proxy::run_proxy(server).await,
     }
 }
 

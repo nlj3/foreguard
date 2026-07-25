@@ -59,10 +59,39 @@ cargo install --git https://github.com/nlj3/foreguard
 
 ## Usage
 
+### As a live proxy for your agent (the main event)
+
+Point any MCP host — **Claude Code, Cursor, Cline** — at Foreguard *instead of* the
+tool server, and it previews every mutating call live. In your MCP config, wrap the
+server command:
+
+```json
+{
+  "mcpServers": {
+    "filesystem": {
+      "command": "foreguard",
+      "args": ["proxy", "--", "npx", "-y", "@modelcontextprotocol/server-filesystem", "/path"]
+    }
+  }
+}
+```
+
+Now read-only tools run for real, but the moment the agent tries to mutate
+something, Foreguard **intercepts it, logs the preview, and returns a dry-run
+success** — the agent keeps planning, nothing gets written or deleted:
+
+```text
+⚠  foreguard intercepted `delete_file` (high risk) — NOT executed
+```
+
+No change to your agent, no change to your prompts — just put `foreguard proxy --`
+in front of the server.
+
+### One-shot: preview a batch of tool calls
+
 ```sh
-# from a file, or stdin with `-`
-foreguard plan tools.json
-cat tools.json | foreguard plan
+foreguard plan tools.json          # from a file
+cat tools.json | foreguard plan    # or stdin
 foreguard plan tools.json --json   # machine-readable
 ```
 
@@ -81,15 +110,16 @@ them is being built.
   `fetch` with `method:"DELETE"`, a mutating SQL verb, `rm` in a command). Fail-safe:
   arguments can only make a call more restricted. This is what makes the preview
   *trustworthy*, not just fast.
+- ✅ **Transparent MCP proxy** (`foreguard proxy -- <server…>`) — sit between any
+  MCP host and its tool server; read-only calls forward for real, mutating calls
+  are intercepted and previewed. Works with Claude Code / Cursor / Cline with no
+  agent changes.
 
 **Planned, in order:**
 
 1. **A richer Mutation Plan** — show the *effect*, not just the call: file diffs,
    the exact HTTP request, the destructive command.
-2. **A transparent MCP proxy** — sit between any MCP agent (Claude Code, Cursor)
-   and its tools, and preview the mutations flowing through — so you get "see it
-   before it acts" without changing your setup.
-3. **Promote-to-live** — execute *exactly* the plan you approved, proven against a
+2. **Promote-to-live** — execute *exactly* the plan you approved, proven against a
    recorded ledger.
 
 ## License

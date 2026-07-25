@@ -7,6 +7,12 @@ this project aims to follow [Semantic Versioning](https://semver.org) from 1.0.0
 
 ### Added
 
+- **Transparent MCP dry-run proxy** (`foreguard proxy -- <server…>`) — launches an
+  MCP tool server and proxies stdio JSON-RPC to/from the host, forwarding
+  everything **except** mutating `tools/call`s, which are intercepted and answered
+  with a synthetic dry-run success (nothing executes). Point Claude Code / Cursor /
+  Cline at it instead of the server — no agent changes. Two-task architecture
+  drains in-flight responses cleanly on shutdown.
 - **Argument-aware classification** — the preview now inspects a tool's
   *arguments*, not just its name, and **upgrades** the verdict when they reveal a
   hidden mutation (fail-safe: arguments can only make a call more restricted).
