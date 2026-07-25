@@ -3,10 +3,11 @@
 //! This closes the loop the ledger opened. Record a session with `--ledger` (in
 //! dry-run, so nothing executes), review the plan offline on your own time, then
 //! promote the exact calls you approve against a live server. Foreguard becomes a
-//! minimal **MCP client** here: it performs the `initialize` handshake and then
-//! sends each recorded `tools/call` *verbatim* — same tool, same arguments — and
-//! prints the server's real response. What you previewed is what runs, even hours
-//! later.
+//! minimal **MCP client** here: it negotiates a session (stateless `2026-07-28`
+//! first, falling back to the legacy `initialize` handshake for older servers),
+//! then sends each recorded `tools/call` *verbatim*, same tool and same
+//! arguments, and prints the server's real response. What you previewed is what
+//! runs, even hours later.
 //!
 //! By default it promotes only the *mutations* in the ledger (read-only calls
 //! already ran during the original session) and confirms each on the terminal
@@ -20,10 +21,7 @@ use serde_json::{json, Value};
 use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncWrite, AsyncWriteExt, BufReader, Lines};
 use tokio::process::{ChildStdin, ChildStdout, Command};
 
-/// The MCP protocol version we advertise. Servers negotiate: a server that speaks a
-/// different version answers `initialize` with the one it will use, and we proceed
-/// with that — `tools/call` is stable across these revisions.
-const PROTOCOL_VERSION: &str = "2025-06-18";
+use crate::mcp::{CLIENT_INFO_KEY, PROTOCOL_VERSION, PROTOCOL_VERSION_LEGACY};
 
 /// One recorded call selected for replay, plus context for the review display.
 struct Call {
@@ -132,9 +130,9 @@ pub async fn run_promote(
     let mut stdin = child.stdin.take().context("server stdin")?;
     let mut stdout = BufReader::new(child.stdout.take().context("server stdout")?).lines();
 
-    initialize(&mut stdin, &mut stdout)
+    let stateless = connect(&mut stdin, &mut stdout)
         .await
-        .context("MCP initialize handshake")?;
+        .context("connecting to the MCP server")?;
 
     let (mut promoted, mut skipped) = (0usize, 0usize);
     let mut id = 1000i64;
@@ -151,7 +149,15 @@ pub async fn run_promote(
         }
 
         id += 1;
-        let resp = call_tool(&mut stdin, &mut stdout, id, &c.tool, &c.arguments).await?;
+        let resp = call_tool(
+            &mut stdin,
+            &mut stdout,
+            id,
+            &c.tool,
+            &c.arguments,
+            stateless,
+        )
+        .await?;
         eprintln!("    ✔ executed");
         println!("{}", summarize(&resp));
         promoted += 1;
@@ -162,26 +168,59 @@ pub async fn run_promote(
     Ok(())
 }
 
-/// MCP `initialize` handshake: request, await the result, then send the
-/// `notifications/initialized` acknowledgement the spec requires before tool calls.
-async fn initialize(
+/// Establish a session, preferring the stateless `2026-07-28` protocol.
+///
+/// That revision removed the `initialize` handshake entirely (SEP-2575), so the
+/// modern path is to send nothing and let per-request `_meta` carry client
+/// identity. We probe with `server/discover`, the method that replaced
+/// `initialize` for capability lookup. A server that answers it is stateless. A
+/// server that rejects it as an unknown method is older, so we fall back to the
+/// legacy handshake rather than assuming one world or the other.
+///
+/// Returns true when the peer is stateless.
+async fn connect(
     stdin: &mut ChildStdin,
     stdout: &mut Lines<BufReader<ChildStdout>>,
-) -> Result<()> {
-    let init = json!({
-        "jsonrpc": "2.0", "id": 1, "method": "initialize",
-        "params": {
-            "protocolVersion": PROTOCOL_VERSION,
-            "capabilities": {},
-            "clientInfo": { "name": "foreguard", "version": env!("CARGO_PKG_VERSION") }
-        }
-    });
-    send(stdin, &init).await?;
+) -> Result<bool> {
+    send(
+        stdin,
+        &json!({
+            "jsonrpc": "2.0", "id": 1, "method": "server/discover",
+            "params": { "_meta": client_meta() }
+        }),
+    )
+    .await?;
     let resp = await_response(stdout, 1).await?;
-    if let Some(err) = resp.get("error") {
-        bail!("server rejected initialize: {err}");
+
+    if resp.get("error").is_none() {
+        let name = resp
+            .pointer("/result/serverInfo/name")
+            .and_then(Value::as_str)
+            .unwrap_or("server");
+        eprintln!("foreguard: connected to `{name}` (stateless MCP {PROTOCOL_VERSION}).");
+        return Ok(true);
     }
-    // Report the negotiated version the server chose (may differ from ours).
+
+    // Older server: fall back to the handshake it does understand.
+    eprintln!(
+        "foreguard: server does not support server/discover; falling back to the legacy handshake."
+    );
+    send(
+        stdin,
+        &json!({
+            "jsonrpc": "2.0", "id": 2, "method": "initialize",
+            "params": {
+                "protocolVersion": PROTOCOL_VERSION_LEGACY,
+                "capabilities": {},
+                "clientInfo": { "name": "foreguard", "version": env!("CARGO_PKG_VERSION") }
+            }
+        }),
+    )
+    .await?;
+    let resp = await_response(stdout, 2).await?;
+    if let Some(err) = resp.get("error") {
+        bail!("server rejected both server/discover and initialize: {err}");
+    }
     let version = resp
         .pointer("/result/protocolVersion")
         .and_then(Value::as_str)
@@ -190,13 +229,21 @@ async fn initialize(
         .pointer("/result/serverInfo/name")
         .and_then(Value::as_str)
         .unwrap_or("server");
-    eprintln!("foreguard: connected to `{name}` (MCP {version}).");
+    eprintln!("foreguard: connected to `{name}` (MCP {version}, legacy handshake).");
     send(
         stdin,
         &json!({ "jsonrpc": "2.0", "method": "notifications/initialized" }),
     )
     .await?;
-    Ok(())
+    Ok(false)
+}
+
+/// The `_meta` block the stateless spec expects on every request: client
+/// identity travels per-message now instead of once at handshake time.
+fn client_meta() -> Value {
+    json!({
+        CLIENT_INFO_KEY: { "name": "foreguard", "version": env!("CARGO_PKG_VERSION") }
+    })
 }
 
 /// Send one recorded `tools/call` verbatim and return the matching response.
@@ -206,11 +253,14 @@ async fn call_tool(
     id: i64,
     name: &str,
     arguments: &Value,
+    stateless: bool,
 ) -> Result<Value> {
-    let req = json!({
-        "jsonrpc": "2.0", "id": id, "method": "tools/call",
-        "params": { "name": name, "arguments": arguments }
-    });
+    let mut params = json!({ "name": name, "arguments": arguments });
+    if stateless {
+        // No handshake established who we are, so say so on every request.
+        params["_meta"] = client_meta();
+    }
+    let req = json!({ "jsonrpc": "2.0", "id": id, "method": "tools/call", "params": params });
     send(stdin, &req).await?;
     await_response(stdout, id).await
 }

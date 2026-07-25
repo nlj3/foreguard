@@ -5,6 +5,30 @@ this project aims to follow [Semantic Versioning](https://semver.org) from 1.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Stateless MCP (`2026-07-28`) support.** That revision removes the
+  `initialize` / `initialized` handshake (SEP-2575) and the `Mcp-Session-Id`
+  header (SEP-2567); what the handshake established once now travels in `_meta`
+  on every request, and `server/discover` replaces `initialize` for capability
+  lookup.
+  - `promote` negotiates: it probes `server/discover` first and, if the server
+    rejects it as an unknown method, falls back to the legacy handshake. Against
+    a stateless server it attaches `io.modelcontextprotocol/clientInfo` to every
+    `tools/call`; against a legacy one it does not.
+  - **Client-identity monitoring.** Because identity is now re-asserted per
+    message rather than pinned once, anything able to influence a request body
+    can claim to be a different client. The proxy records the first claim and
+    warns when a later message contradicts it, which is the observable signature
+    of a spoof or a server mix-up. Reported, not enforced: a host legitimately
+    multiplexing two clients over one pipe looks identical.
+  - **`_meta` is scanned for taint** alongside `arguments`, since a tainted
+    value can now ride there just as easily.
+
+  Scope, stated plainly: Foreguard proxies stdio, not Streamable HTTP, so it
+  never sees the new `Mcp-Method` / `Mcp-Name` routing headers and makes no
+  claim to validate them.
+
 ## [0.4.0] — 2026-07-24
 
 ### Added

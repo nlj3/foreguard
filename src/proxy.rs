@@ -25,6 +25,7 @@ use std::path::PathBuf;
 
 use crate::classify::classify_call;
 use crate::ledger::{now_millis, Entry, Ledger};
+use crate::mcp::SessionIdentity;
 use crate::taint::TaintTracker;
 use kedge_core::ToolSafety;
 
@@ -267,11 +268,23 @@ pub async fn run_proxy(
     let tracker_a = tracker.clone();
     let host_to_server = async move {
         let mut host_in = BufReader::new(tokio::io::stdin()).lines();
+        // Under the stateless spec there is no handshake pinning who the client
+        // is, so identity is only ever a per-message claim in `_meta`.
+        let mut identity = SessionIdentity::new();
         while let Ok(Some(l)) = host_in.next_line().await {
             // Record provenance for every tool call (even read-only sources).
             let meta = tool_call_meta(&l);
             if let (Some(tr), Some((id, name, _))) = (&tracker_a, &meta) {
                 tr.lock().await.note_request(id, name);
+            }
+            if let Ok(msg) = serde_json::from_str::<Value>(&l) {
+                if let Some((first, now)) = identity.observe(&msg) {
+                    eprintln!(
+                        "⚠  client identity changed mid-session: `{first}` then `{now}`. With no \
+                         handshake to pin it, this is a per-message claim; treat it as a possible \
+                         spoof or a mix-up between servers."
+                    );
+                }
             }
             match inspect(&l) {
                 Inspection::Passthrough => {
@@ -283,8 +296,23 @@ pub async fn run_proxy(
                 }
                 Inspection::Mutation(p) => {
                     // Did untrusted data flow into this mutation? (Rule-of-Two check.)
+                    // Scan `_meta` alongside the arguments: since the stateless
+                    // spec puts `_meta` on every request, a tainted value can
+                    // ride there just as easily as in `arguments`.
                     let taint_reason = match (&tracker_a, &meta) {
-                        (Some(tr), Some((_, _, args))) => tr.lock().await.check_mutation(args),
+                        (Some(tr), Some((_, _, args))) => {
+                            let t = tr.lock().await;
+                            t.check_mutation(args).or_else(|| {
+                                serde_json::from_str::<Value>(&l).ok().and_then(|m| {
+                                    t.check_mutation(&Value::Array(
+                                        crate::mcp::meta_strings(&m)
+                                            .into_iter()
+                                            .map(Value::String)
+                                            .collect(),
+                                    ))
+                                })
+                            })
+                        }
                         _ => None,
                     };
                     if let Some(reason) = &taint_reason {

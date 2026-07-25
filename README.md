@@ -177,6 +177,13 @@ $ jq -c '{tool,kind,taint,decision}' run.jsonl
   the loop: record a plan in dry-run, review it offline, then replay the *exact* calls
   for real. Foreguard becomes a minimal MCP client (handshake + verbatim `tools/call`).
   Mutations only by default; each confirmed on the terminal unless `--yes`; fail-safe.
+- ✅ **Stateless MCP (`2026-07-28`)** — the spec that removes the `initialize`
+  handshake and moves client identity into `_meta` on every request. `promote`
+  negotiates `server/discover` first and falls back to the legacy handshake for older
+  servers. Because identity is now a per-message claim rather than something pinned
+  once, the proxy warns when it changes mid-session, and `_meta` is taint-scanned
+  alongside `arguments`. (Foreguard proxies stdio, so it does not see the new
+  `Mcp-Method` / `Mcp-Name` HTTP routing headers and makes no claim about them.)
 
 Record a plan without executing anything, then promote it whenever you're ready:
 
