@@ -63,6 +63,11 @@ enum Command {
     /// Read-only tools run for real; mutating tool calls are intercepted and
     /// previewed — nothing mutating executes.
     Proxy {
+        /// Promote-to-live: pause on each mutation for an interactive y/N. Approve
+        /// and the *exact* call you previewed executes for real; deny (or no
+        /// terminal) and it stays a dry-run. Without this, all mutations are dry-run.
+        #[arg(long)]
+        approve: bool,
         /// The MCP server command to wrap, given after `--`.
         #[arg(last = true, required = true)]
         server: Vec<String>,
@@ -106,7 +111,7 @@ struct Plan {
 async fn main() -> Result<()> {
     match Cli::parse().command {
         Command::Plan { input, json } => cmd_plan(&input, json),
-        Command::Proxy { server } => proxy::run_proxy(server).await,
+        Command::Proxy { approve, server } => proxy::run_proxy(server, approve).await,
     }
 }
 
