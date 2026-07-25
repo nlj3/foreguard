@@ -5,6 +5,8 @@ this project aims to follow [Semantic Versioning](https://semver.org) from 1.0.0
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-07-25
+
 ### Added
 
 - **Stateless MCP (`2026-07-28`) support.** That revision removes the
