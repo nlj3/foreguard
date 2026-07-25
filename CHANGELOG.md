@@ -5,6 +5,8 @@ this project aims to follow [Semantic Versioning](https://semver.org) from 1.0.0
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-07-24
+
 ### Added
 
 - **Recorded ledger** (`foreguard proxy --ledger <path>`) — append a JSON line per
