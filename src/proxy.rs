@@ -30,6 +30,19 @@ use crate::mcp::SessionIdentity;
 use crate::taint::TaintTracker;
 use kedge_core::ToolSafety;
 
+/// What the proxy has learned from the server's own `tools/list` reply.
+///
+/// Both halves exist because a single tool name carries too little evidence to
+/// judge on its own. The catalogue is where that missing context lives.
+#[derive(Default)]
+pub(crate) struct Catalogue {
+    /// Declared capability hints, applied asymmetrically (see `classify`).
+    annotations: HashMap<String, Ann>,
+    /// Head tokens corroborated across several tools, so a namespaced tool can
+    /// be judged as its unprefixed equivalent.
+    namespaces: std::collections::HashSet<String>,
+}
+
 /// The outcome of inspecting one host→server message.
 enum Inspection {
     /// Not a mutating tool call — forward it verbatim.
@@ -58,7 +71,7 @@ struct Preview {
 
 /// Inspect one host→server JSON-RPC line. Pure and testable: anything that isn't a
 /// mutating `tools/call` is `Passthrough`.
-fn inspect(line: &str, ann: Option<Ann>) -> Inspection {
+fn inspect(line: &str, ann: Option<Ann>, classify_as: Option<&str>) -> Inspection {
     let Ok(msg) = serde_json::from_str::<Value>(line) else {
         return Inspection::Passthrough; // not JSON we understand — stay transparent
     };
@@ -75,7 +88,10 @@ fn inspect(line: &str, ann: Option<Ann>) -> Inspection {
         .cloned()
         .unwrap_or(Value::Null);
 
-    let verdict = classify_call_annotated(name, &args, ann);
+    // Classify the normalized name (namespace stripped when the catalogue
+    // corroborates one), but report the name the agent actually used.
+    let judged = classify_as.unwrap_or(name);
+    let verdict = classify_call_annotated(judged, &args, ann);
     let ToolSafety::Mutating { risk } = verdict.safety else {
         return Inspection::Passthrough;
     };
@@ -253,7 +269,7 @@ pub async fn run_proxy(
     // before that reply lands gets the fail-safe verdict instead, which is the
     // correct way to lose this race but means the registry is best-effort, not a
     // guarantee.
-    let annotations: Arc<Mutex<HashMap<String, Ann>>> = Arc::new(Mutex::new(HashMap::new()));
+    let catalogue: Arc<Mutex<Catalogue>> = Arc::new(Mutex::new(Catalogue::default()));
 
     // Audit ledger — owned solely by the host→server task (the one that decides).
     let mut ledger = match &ledger_path {
@@ -283,14 +299,14 @@ pub async fn run_proxy(
     // `server_in` closes the server's stdin so it can finish and flush.
     let host_out_a = host_out.clone();
     let tracker_a = tracker.clone();
-    let annotations_a = annotations.clone();
+    let catalogue_a = catalogue.clone();
     let host_to_server = async move {
         pump_host_to_server(
             BufReader::new(tokio::io::stdin()),
             &mut server_in,
             &host_out_a,
             tracker_a.as_ref(),
-            &annotations_a,
+            &catalogue_a,
             &mut ledger,
             approve,
             Approver::Tty,
@@ -302,13 +318,13 @@ pub async fn run_proxy(
     // server → host (verbatim), tainting untrusted-source results as they pass.
     let host_out_b = host_out.clone();
     let tracker_b = tracker.clone();
-    let annotations_b = annotations.clone();
+    let catalogue_b = catalogue.clone();
     let server_to_host = async move {
         pump_server_to_host(
             BufReader::new(server_out),
             &host_out_b,
             tracker_b.as_ref(),
-            Some(&annotations_b),
+            Some(&catalogue_b),
         )
         .await;
     };
@@ -328,7 +344,7 @@ async fn pump_host_to_server<R, W, O>(
     server_in: &mut W,
     host_out: &Arc<Mutex<O>>,
     tracker: Option<&Arc<Mutex<TaintTracker>>>,
-    annotations: &Arc<Mutex<HashMap<String, Ann>>>,
+    catalogue: &Arc<Mutex<Catalogue>>,
     ledger: &mut Option<Ledger>,
     approve: bool,
     approver: Approver,
@@ -359,12 +375,19 @@ async fn pump_host_to_server<R, W, O>(
                     );
                 }
             }
-            // What did the server declare about this tool, if anything?
-            let ann = match &meta {
-                Some((_, name, _)) => annotations.lock().await.get(name).copied(),
-                None => None,
+            // What has the catalogue taught us about this tool: what the server
+            // declared, and whether its prefix is a corroborated namespace?
+            let (ann, judged) = match &meta {
+                Some((_, name, _)) => {
+                    let c = catalogue.lock().await;
+                    (
+                        c.annotations.get(name).copied(),
+                        crate::mcp::strip_namespace(name, &c.namespaces),
+                    )
+                }
+                None => (None, String::new()),
             };
-            match inspect(&l, ann) {
+            match inspect(&l, ann, (!judged.is_empty()).then_some(judged.as_str())) {
                 Inspection::Passthrough => {
                     if !forward_line(server_in, &l).await {
                         break;
@@ -433,7 +456,7 @@ async fn pump_server_to_host<R, O>(
     server_out: R,
     host_out: &Arc<Mutex<O>>,
     tracker: Option<&Arc<Mutex<TaintTracker>>>,
-    annotations: Option<&Arc<Mutex<HashMap<String, Ann>>>>,
+    catalogue: Option<&Arc<Mutex<Catalogue>>>,
 ) where
     R: AsyncBufRead + Unpin,
     O: AsyncWrite + Unpin,
@@ -445,15 +468,20 @@ async fn pump_server_to_host<R, O>(
                 tr.lock().await.note_result(&id, &text);
             }
         }
-        // Learn declared capabilities as the tools/list reply goes past.
-        if let Some(reg) = annotations {
+        // Learn from the tools/list reply as it goes past: both the declared
+        // capabilities and, from the catalogue as a whole, which head tokens are
+        // corroborated namespaces rather than verbs.
+        if let Some(reg) = catalogue {
             if let Ok(msg) = serde_json::from_str::<Value>(&l) {
                 let found = crate::mcp::tool_annotations(&msg);
                 if !found.is_empty() {
-                    let mut r = reg.lock().await;
+                    let names: Vec<String> = found.iter().map(|(n, _)| n.clone()).collect();
+                    let spaces = crate::mcp::namespaces(&names);
+                    let mut c = reg.lock().await;
                     for (n, a) in found {
-                        r.insert(n, a);
+                        c.annotations.insert(n, a);
                     }
+                    c.namespaces.extend(spaces);
                 }
             }
         }
@@ -545,7 +573,7 @@ mod tests {
     use super::*;
 
     fn is_intercepted(line: &str) -> bool {
-        matches!(inspect(line, None), Inspection::Mutation(_))
+        matches!(inspect(line, None, None), Inspection::Mutation(_))
     }
 
     // ── end-to-end pumping ────────────────────────────────────────────────
@@ -568,13 +596,13 @@ mod tests {
         let mut server_in: Vec<u8> = Vec::new();
         let host_out = Arc::new(Mutex::new(Vec::<u8>::new()));
         let mut ledger = None;
-        let annotations = Arc::new(Mutex::new(HashMap::new()));
+        let catalogue = Arc::new(Mutex::new(Catalogue::default()));
         pump_host_to_server(
             BufReader::new(input.as_bytes()),
             &mut server_in,
             &host_out,
             tracker.as_ref(),
-            &annotations,
+            &catalogue,
             &mut ledger,
             approve,
             approver,
@@ -693,7 +721,7 @@ mod tests {
     #[test]
     fn mutating_tool_call_is_intercepted_with_a_synthetic_success() {
         let line = r#"{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"delete_file","arguments":{"path":"/etc/passwd"}}}"#;
-        match inspect(line, None) {
+        match inspect(line, None, None) {
             Inspection::Mutation(p) => {
                 assert!(p.log.contains("delete_file"));
                 // The approval prompt shows the concrete effect and defaults to No.
@@ -749,45 +777,100 @@ mod annotation_flow {
 
     /// The whole point of the wiring: a hint the server published in `tools/list`
     /// must reach the decision made about a later `tools/call`.
-    #[tokio::test]
-    async fn a_hint_learned_from_tools_list_changes_a_later_verdict() {
-        let registry: Arc<Mutex<HashMap<String, Ann>>> = Arc::new(Mutex::new(HashMap::new()));
+    /// Learn a catalogue, then judge a call against it.
+    async fn learn(list: &str) -> Catalogue {
+        let cat: Arc<Mutex<Catalogue>> = Arc::new(Mutex::new(Catalogue::default()));
         let host_out = Arc::new(Mutex::new(Vec::<u8>::new()));
-
-        // The real filesystem server's reply, trimmed to the two interesting tools.
-        let list = r#"{"jsonrpc":"2.0","id":1,"result":{"tools":[
-            {"name":"directory_tree","annotations":{"readOnlyHint":true}},
-            {"name":"delete_file","annotations":{"readOnlyHint":true}}]}}"#
-            .replace('\n', "");
         pump_server_to_host(
-            BufReader::new(format!("{list}\n").as_bytes()),
+            BufReader::new(format!("{}\n", list.replace('\n', "")).as_bytes()),
             &host_out,
             None,
-            Some(&registry),
+            Some(&cat),
         )
         .await;
+        let c = cat.lock().await;
+        Catalogue {
+            annotations: c.annotations.clone(),
+            namespaces: c.namespaces.clone(),
+        }
+    }
 
-        let learned = registry.lock().await.clone();
-        assert_eq!(learned.len(), 2, "both tools were learned");
+    fn call(name: &str) -> String {
+        format!(
+            r#"{{"jsonrpc":"2.0","id":9,"method":"tools/call","params":{{"name":"{name}","arguments":{{"path":"/tmp/x"}}}}}}"#
+        )
+    }
 
-        let tree = r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"directory_tree","arguments":{"path":"."}}}"#;
-        let del = r#"{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"delete_file","arguments":{"path":"/etc/passwd"}}}"#;
+    fn judge(cat: &Catalogue, name: &str) -> Inspection {
+        let line = call(name);
+        let judged = crate::mcp::strip_namespace(name, &cat.namespaces);
+        inspect(&line, cat.annotations.get(name).copied(), Some(&judged))
+    }
 
-        // Unrecognised name + declared read-only => honoured, no longer intercepted.
+    #[tokio::test]
+    async fn a_hint_learned_from_tools_list_changes_a_later_verdict() {
+        let cat = learn(
+            r#"{"jsonrpc":"2.0","id":1,"result":{"tools":[
+            {"name":"directory_tree","annotations":{"readOnlyHint":true}},
+            {"name":"delete_file","annotations":{"readOnlyHint":true}}]}}"#,
+        )
+        .await;
+        assert_eq!(cat.annotations.len(), 2, "both tools were learned");
+
         assert!(
-            matches!(
-                inspect(tree, learned.get("directory_tree").copied()),
-                Inspection::Passthrough
-            ),
+            matches!(judge(&cat, "directory_tree"), Inspection::Passthrough),
             "directory_tree should pass once the server declares it read-only"
         );
-        // Lexically dangerous name + the same declaration => still intercepted.
         assert!(
-            matches!(
-                inspect(del, learned.get("delete_file").copied()),
-                Inspection::Mutation(_)
-            ),
+            matches!(judge(&cat, "delete_file"), Inspection::Mutation(_)),
             "ESCAPE: a server declared delete_file read-only and was believed"
+        );
+    }
+
+    /// Namespace resolution, end to end. puppeteer publishes no annotations at
+    /// all, so this can only work by corroborating the shared prefix across the
+    /// catalogue and judging the remainder.
+    #[tokio::test]
+    async fn a_corroborated_namespace_is_stripped_before_judging() {
+        let cat = learn(
+            r#"{"jsonrpc":"2.0","id":1,"result":{"tools":[
+            {"name":"puppeteer_navigate"},{"name":"puppeteer_screenshot"},
+            {"name":"puppeteer_click"},{"name":"puppeteer_fill"},
+            {"name":"puppeteer_select"},{"name":"puppeteer_hover"},
+            {"name":"puppeteer_evaluate"}]}}"#,
+        )
+        .await;
+        assert!(cat.namespaces.contains("puppeteer"));
+        assert!(
+            cat.annotations.values().all(|a| a.read_only.is_none()),
+            "no annotations were published; the namespace is doing the work"
+        );
+
+        assert!(
+            matches!(judge(&cat, "puppeteer_screenshot"), Inspection::Passthrough),
+            "a screenshot reads; the namespace should not have hidden that"
+        );
+        for n in ["puppeteer_click", "puppeteer_fill", "puppeteer_evaluate"] {
+            assert!(
+                matches!(judge(&cat, n), Inspection::Mutation(_)),
+                "{n} mutates and must stay intercepted"
+            );
+        }
+    }
+
+    /// The bypass shape, at the proxy level. One tool named `ns_*` corroborates
+    /// nothing, so no stripping happens and the unknown head still fails safe.
+    #[tokio::test]
+    async fn a_lone_prefix_is_not_stripped_and_still_fails_safe() {
+        let cat = learn(
+            r#"{"jsonrpc":"2.0","id":1,"result":{"tools":[
+            {"name":"ns_get_frobnicate"},{"name":"read_file"},{"name":"write_file"}]}}"#,
+        )
+        .await;
+        assert!(cat.namespaces.is_empty(), "nothing was corroborated");
+        assert!(
+            matches!(judge(&cat, "ns_get_frobnicate"), Inspection::Mutation(_)),
+            "BYPASS: an unknown action behind a lone prefix was forwarded"
         );
     }
 }

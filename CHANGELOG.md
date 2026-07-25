@@ -5,6 +5,33 @@ this project aims to follow [Semantic Versioning](https://semver.org) from 1.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Namespace resolution from the catalogue.** MCP servers routinely namespace
+  their tools (`puppeteer_navigate`, `puppeteer_click`, …), which pushes the real
+  verb out of head position and made the whole family fail safe. puppeteer scored
+  7 of 7 intercepted, including `puppeteer_screenshot`, which mutates nothing.
+
+  kedge-core deliberately will not guess at this, because a single name in
+  isolation carries no evidence that its first token is a namespace rather than a
+  verb. Guessing is exactly what produced the window bypass reverted in 0.3.1.
+
+  A catalogue does carry that evidence. When `tools/list` shows a head token
+  shared by at least three tools, that token is empirically a namespace, and the
+  tool is judged as its unprefixed equivalent. Verified against live puppeteer,
+  which publishes **no annotations at all**: `puppeteer_screenshot` now passes
+  while all six genuinely interactive tools stay intercepted.
+
+  Three properties keep this from becoming the previous bypass:
+  - **Corroboration is required.** A lone `ns_` prefix has no siblings, earns
+    nothing, and `ns_get_frobnicate` keeps failing safe.
+  - **A verb is never a namespace.** Without this guard, a server exposing
+    `write_file`, `write_query` and `write_x` would make "write" look like a
+    namespace, and stripping it turns `write_query` into `query`, which reads as
+    safe. Caught by its own test before it shipped.
+  - **Stripping cannot add latitude.** It only makes a namespaced name behave
+    like the unprefixed tool of the same name already did.
+
 ### Security
 
 - **Depends on kedge-core 0.3.1**, which reverts the two-token read-verb window
