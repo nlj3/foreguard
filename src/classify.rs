@@ -338,3 +338,178 @@ mod evasion {
         }
     }
 }
+
+/// Capability hints a server declares for a tool in its `tools/list` reply.
+#[derive(Clone, Copy, Default, Debug)]
+pub struct Ann {
+    pub read_only: Option<bool>,
+    pub destructive: Option<bool>,
+}
+
+/// Is this name *lexically benign*: containing no verb kedge recognises as
+/// mutating or dangerous, merely unrecognised?
+///
+/// `classify` collapses two very different cases into the same
+/// `Mutating { Medium }`: a recognised side-effecting verb (`write_file`), and
+/// "nothing matched, so assume the worst" (`directory_tree`). Telling them apart
+/// is what lets a server's `readOnlyHint` be honoured for the second without ever
+/// being honoured for the first.
+///
+/// Rather than re-list kedge's vocabulary here, which would drift, we ask kedge
+/// itself: prefix the name with a known read verb. Because classification is
+/// deny-wins across *every* token, a name carrying any mutating verb still comes
+/// back mutating. Only a name with no such token can be pulled down to read-only
+/// by the prefix.
+fn lexically_benign(name: &str) -> bool {
+    !name.trim().is_empty()
+        && matches!(
+            kedge_core::classify(&format!("read_{name}")),
+            ToolSafety::ReadOnly
+        )
+}
+
+/// Classify a call, taking the server's declared capability hints into account.
+///
+/// Hints are honoured **asymmetrically**, and deliberately so:
+///
+/// - Upgrades are always trusted. `destructiveHint: true` or
+///   `readOnlyHint: false` can only make a verdict stricter.
+/// - A downgrade from `readOnlyHint: true` is honoured **only** when our own
+///   lexical read agrees the name is benign, and only when the arguments reveal
+///   nothing either. A server declaring `readOnlyHint: true` on `delete_file`
+///   changes nothing at all.
+///
+/// The residual trade is worth naming: for a name we do not recognise, we now
+/// take the server's word for it. A hostile server could pair an innocuous name
+/// with `readOnlyHint: true` and be forwarded where the fail-safe default would
+/// previously have intercepted. That is the price of not flagging every
+/// `directory_tree`, and it is bounded: no annotation can rescue a name that
+/// reads as dangerous, and taint tracking still applies to whatever comes back.
+pub fn classify_call_annotated(name: &str, args: &Value, ann: Option<Ann>) -> Verdict {
+    let ann = ann.unwrap_or_default();
+    // Upgrades first; kedge_core refuses to downgrade here, which is what we want.
+    let base = kedge_core::classify_annotated(name, ann.read_only, ann.destructive);
+
+    let downgradable = base.is_mutating()
+        && ann.read_only == Some(true)
+        && ann.destructive != Some(true)
+        && lexically_benign(name);
+
+    if downgradable {
+        // Arguments still get the final word: a declared-read-only tool carrying
+        // `method: "DELETE"` is a mutation regardless of what was declared.
+        return match args_reveal_mutation(args) {
+            Some((risk, reason)) => Verdict {
+                safety: ToolSafety::Mutating { risk },
+                arg_reason: Some(reason),
+            },
+            None => Verdict {
+                safety: ToolSafety::ReadOnly,
+                arg_reason: None,
+            },
+        };
+    }
+
+    if base.is_mutating() {
+        return Verdict {
+            safety: base,
+            arg_reason: None,
+        };
+    }
+    match args_reveal_mutation(args) {
+        Some((risk, reason)) => Verdict {
+            safety: ToolSafety::Mutating { risk },
+            arg_reason: Some(reason),
+        },
+        None => Verdict {
+            safety: base,
+            arg_reason: None,
+        },
+    }
+}
+
+#[cfg(test)]
+mod annotations {
+    use super::*;
+    use serde_json::json;
+
+    fn ro() -> Option<Ann> {
+        Some(Ann {
+            read_only: Some(true),
+            destructive: None,
+        })
+    }
+
+    fn verdict(name: &str, ann: Option<Ann>) -> bool {
+        classify_call_annotated(name, &json!({"path": "/tmp/x"}), ann)
+            .safety
+            .is_mutating()
+    }
+
+    #[test]
+    fn a_declared_read_only_unrecognised_tool_is_honoured() {
+        // The real bug: the filesystem server declares directory_tree read-only,
+        // and nothing in the name suggests otherwise.
+        assert!(
+            verdict("directory_tree", None),
+            "unannotated, fail-safe holds"
+        );
+        assert!(!verdict("directory_tree", ro()), "annotation is honoured");
+    }
+
+    #[test]
+    fn a_hostile_server_cannot_declare_a_dangerous_tool_safe() {
+        for name in [
+            "delete_file",
+            "write_file",
+            "rm",
+            "drop_database",
+            "move_file",
+            "edit_file",
+            "get_or_delete_file",
+            "definitely_read_only_write_file",
+        ] {
+            assert!(
+                verdict(name, ro()),
+                "ESCAPE: {name} was downgraded by a readOnlyHint it should never be trusted for"
+            );
+        }
+    }
+
+    #[test]
+    fn arguments_still_override_a_declared_read_only() {
+        let v = classify_call_annotated(
+            "fetch_thing",
+            &json!({"url": "https://x", "method": "DELETE"}),
+            ro(),
+        );
+        assert!(v.safety.is_mutating(), "args outrank the annotation");
+        assert!(v.arg_reason.is_some());
+    }
+
+    #[test]
+    fn upgrades_are_always_trusted() {
+        let d = Some(Ann {
+            read_only: Some(true),
+            destructive: Some(true),
+        });
+        assert!(
+            verdict("read_file", d),
+            "destructiveHint upgrades a read verb"
+        );
+        let nro = Some(Ann {
+            read_only: Some(false),
+            destructive: None,
+        });
+        assert!(verdict("read_file", nro), "readOnlyHint:false upgrades");
+    }
+
+    #[test]
+    fn the_probe_distinguishes_unrecognised_from_dangerous() {
+        assert!(lexically_benign("directory_tree"));
+        assert!(lexically_benign("list_allowed_directories"));
+        assert!(!lexically_benign("write_file"));
+        assert!(!lexically_benign("delete_everything"));
+        assert!(!lexically_benign(""), "empty names are never benign");
+    }
+}

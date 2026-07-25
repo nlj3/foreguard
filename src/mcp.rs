@@ -148,3 +148,65 @@ mod tests {
         assert!(s.iter().any(|x| x == "claude-code"));
     }
 }
+
+/// Harvest declared capability hints from a `tools/list` reply.
+///
+/// Returns `(name, hints)` for each advertised tool. The proxy caches these so a
+/// later `tools/call` can be judged with what the server said about that tool,
+/// subject to the asymmetry in [`crate::classify::classify_call_annotated`]:
+/// upgrades are trusted, a downgrade only ever applies to a name our own lexical
+/// read already considers benign.
+pub fn tool_annotations(msg: &Value) -> Vec<(String, crate::classify::Ann)> {
+    let Some(tools) = msg.pointer("/result/tools").and_then(Value::as_array) else {
+        return Vec::new();
+    };
+    tools
+        .iter()
+        .filter_map(|t| {
+            let name = t.get("name")?.as_str()?.to_string();
+            let a = t.get("annotations");
+            Some((
+                name,
+                crate::classify::Ann {
+                    read_only: a
+                        .and_then(|x| x.get("readOnlyHint"))
+                        .and_then(Value::as_bool),
+                    destructive: a
+                        .and_then(|x| x.get("destructiveHint"))
+                        .and_then(Value::as_bool),
+                },
+            ))
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod annotation_parsing {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn reads_hints_from_a_real_tools_list_shape() {
+        // Shape copied from @modelcontextprotocol/server-filesystem.
+        let msg = json!({"jsonrpc":"2.0","id":2,"result":{"tools":[
+            {"name":"directory_tree","annotations":{"readOnlyHint":true,"openWorldHint":false}},
+            {"name":"write_file","annotations":{"readOnlyHint":false,"destructiveHint":true}},
+            {"name":"mystery"}
+        ]}});
+        let got = tool_annotations(&msg);
+        assert_eq!(got.len(), 3);
+        assert_eq!(got[0].0, "directory_tree");
+        assert_eq!(got[0].1.read_only, Some(true));
+        assert_eq!(got[1].1.destructive, Some(true));
+        assert_eq!(
+            got[2].1.read_only, None,
+            "a tool with no annotations is unknown, not safe"
+        );
+    }
+
+    #[test]
+    fn a_non_tools_list_message_yields_nothing() {
+        assert!(tool_annotations(&json!({"result":{"content":[]}})).is_empty());
+        assert!(tool_annotations(&json!({"method":"tools/call"})).is_empty());
+    }
+}
