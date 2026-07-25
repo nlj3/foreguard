@@ -461,14 +461,28 @@ mod annotations {
         );
     }
 
-    /// `directory_tree` used to need an annotation to escape being flagged. Since
-    /// the classifier learned to see a read verb behind a namespace prefix, it is
-    /// read-only on its own and the annotation merely agrees. Kept as a regression
-    /// guard, because this is the tool that started the whole investigation.
+    /// `directory_tree` is the tool that started this whole investigation, so it
+    /// stays pinned as a regression guard.
+    ///
+    /// kedge-core 0.3.0 briefly classified it read-only on its own, by matching a
+    /// read verb behind a namespace prefix. 0.3.1 reverted that: the same window
+    /// let a known-safe verb validate an unknown action, so `ns_get_frobnicate`
+    /// was being forwarded. The verb here sits in second position, so the lexical
+    /// pass fails safe again and the annotation is what rescues it.
+    ///
+    /// That is the correct division for now. Resolving a namespace needs
+    /// corroboration across a whole catalogue, which belongs in this crate, not
+    /// in a stateless lexical function.
     #[test]
-    fn directory_tree_no_longer_depends_on_an_annotation() {
-        assert!(!verdict("directory_tree", None), "now handled lexically");
-        assert!(!verdict("directory_tree", ro()));
+    fn directory_tree_depends_on_the_servers_declared_hint() {
+        assert!(
+            verdict("directory_tree", None),
+            "lexically it fails safe: the read verb is not in head position"
+        );
+        assert!(
+            !verdict("directory_tree", ro()),
+            "the server declaring it read-only is what clears it"
+        );
     }
 
     #[test]

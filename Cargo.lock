@@ -221,9 +221,9 @@ dependencies = [
 
 [[package]]
 name = "kedge-core"
-version = "0.3.0"
+version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "90653a967c447820334b2f39adefa717d7af70dce9807f2543c44e9dcbf93085"
+checksum = "7ee34229408169861efbc1677b3c72ad04d8d53fb894c65e4de9d0ccec30a0b5"
 dependencies = [
  "async-trait",
  "serde",

@@ -5,6 +5,19 @@ this project aims to follow [Semantic Versioning](https://semver.org) from 1.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **Depends on kedge-core 0.3.1**, which reverts the two-token read-verb window
+  introduced in 0.3.0. Adversarial testing against a deliberately hostile MCP
+  server showed the window let a known-safe verb validate an unknown action, so
+  `ns_get_frobnicate` and `x_get_nuke` were forwarded on the lexical pass alone,
+  with no annotation involved. That converts a fail-safe default into a
+  blocklist. A false positive is noise; that was a hole.
+
+  Consequence: namespaced read-only tools are false positives again. puppeteer
+  returns to 7 of 7 intercepted. `directory_tree` is still cleared, but by the
+  server's declared `readOnlyHint` rather than by the name.
+
 ### Fixed
 
 - **Namespaced read-only tools are no longer flagged.** An ecosystem sweep of 10
