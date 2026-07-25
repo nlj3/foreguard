@@ -152,6 +152,27 @@ them is being built.
 - ✅ **Effect-rich Mutation Plan** — the preview shows *what* a mutation would do,
   not just that it mutates: `deletes /etc/passwd`, `DELETE https://api/…`, `writes
   N bytes to config.toml:` (with a content snippet), `sends to all@company.com`.
+- ✅ **Diff previews for file writes** — for a file mutation it goes further and
+  shows the change itself, by reading the target as it is right now and diffing it
+  against what the agent proposes:
+
+  ```
+  ⚠  intercepted `write_file` (medium risk) — NOT executed
+      ┌─ config.toml
+      │   3 - host = "localhost"
+      │   3 + host = "0.0.0.0"
+      └─ +1, -1
+  ```
+
+  Deletes show what would be lost; new files read as creations. Read-only,
+  size-capped, honours `NO_COLOR`.
+- ✅ **Reads what the server declares** — capability hints (`readOnlyHint`,
+  `destructiveHint`) from `tools/list` are applied **asymmetrically**: upgrades are
+  always trusted, a downgrade only when the name is lexically benign *and* the
+  arguments reveal nothing. Declaring `readOnlyHint: true` on `delete_file`
+  changes nothing. Namespaces are resolved the same way, from the catalogue: a
+  head token shared by several tools is empirically a prefix, so
+  `puppeteer_screenshot` is judged as `screenshot` while a lone `ns_` earns nothing.
 - ✅ **Promote-to-live** (`foreguard proxy --approve`) — the trust loop, closed: each
   mutation pauses for a `[y/N]` on your terminal, and approving forwards the *exact*
   call you saw to execute for real. Fail-safe — only an explicit `y` runs; no
