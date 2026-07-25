@@ -22,6 +22,7 @@ use tokio::process::Command;
 use tokio::sync::Mutex;
 
 use crate::classify::classify_call;
+use crate::taint::TaintTracker;
 use kedge_core::ToolSafety;
 
 /// The outcome of inspecting one host→server message.
@@ -130,15 +131,72 @@ async fn approved_on_tty() -> bool {
     is_affirmative(&answer)
 }
 
+/// JSON-RPC ids can be numbers or strings; key on a canonical form so a request and
+/// its result agree (`7` and `"7"` map the same across request/response).
+fn id_key(id: &Value) -> String {
+    id.as_str()
+        .map(str::to_string)
+        .unwrap_or_else(|| id.to_string())
+}
+
+/// Extract `(id, name, arguments)` from a host→server `tools/call`, if it is one.
+/// Used to record provenance for *every* call — including read-only sources like
+/// `fetch`, whose results we still need to taint.
+fn tool_call_meta(line: &str) -> Option<(String, String, Value)> {
+    let msg: Value = serde_json::from_str(line).ok()?;
+    if msg.get("method").and_then(Value::as_str)? != "tools/call" {
+        return None;
+    }
+    let id = msg.get("id").map(id_key).unwrap_or_default();
+    let params = msg.get("params");
+    let name = params
+        .and_then(|p| p.get("name"))
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    let args = params
+        .and_then(|p| p.get("arguments"))
+        .cloned()
+        .unwrap_or(Value::Null);
+    Some((id, name, args))
+}
+
+/// Extract `(id, all-text)` from a server→host result line, if it carries a result.
+fn result_meta(line: &str) -> Option<(String, String)> {
+    let msg: Value = serde_json::from_str(line).ok()?;
+    let result = msg.get("result")?;
+    let id = msg.get("id").map(id_key).unwrap_or_default();
+    let mut text = String::new();
+    collect_text(result, &mut text);
+    Some((id, text))
+}
+
+/// Concatenate every string inside a value (gathers a result's text content).
+fn collect_text(v: &Value, out: &mut String) {
+    match v {
+        Value::String(s) => {
+            out.push_str(s);
+            out.push('\n');
+        }
+        Value::Array(a) => a.iter().for_each(|x| collect_text(x, out)),
+        Value::Object(o) => o.values().for_each(|x| collect_text(x, out)),
+        _ => {}
+    }
+}
+
 /// Launch `server` (program + args) and proxy MCP stdio to/from it, previewing
 /// mutating tool calls.
 ///
-/// With `approve = false` (default), every mutation is dry-run: intercepted and
-/// answered with a synthetic success. With `approve = true` (promote-to-live), each
-/// mutation pauses for an interactive y/N on the terminal — approve and the *exact*
-/// call you saw is forwarded to execute for real; deny (or no terminal) and it stays
-/// a dry-run.
-pub async fn run_proxy(server: Vec<String>, approve: bool) -> Result<()> {
+/// - `approve = false`, `taint = false` (default): every mutation is dry-run —
+///   intercepted and answered with a synthetic success.
+/// - `approve = true` (promote-to-live): every mutation pauses for an interactive
+///   y/N; approve and the *exact* call you saw executes; deny (or no terminal) and
+///   it stays a dry-run.
+/// - `taint = true` (Context Foresight): the proxy taints the output of
+///   untrusted-source tools and, when that data reaches a mutating call — the
+///   "Rule of Two" violation — forces the approval gate for that call even if
+///   `approve` is off. Untainted mutations follow the `approve` setting.
+pub async fn run_proxy(server: Vec<String>, approve: bool, taint: bool) -> Result<()> {
     let (program, args) = server
         .split_first()
         .context("`foreguard proxy` needs a server command after `--`")?;
@@ -156,60 +214,84 @@ pub async fn run_proxy(server: Vec<String>, approve: bool) -> Result<()> {
 
     // Both directions write to the host's stdout, so it's shared behind a mutex.
     let host_out = Arc::new(Mutex::new(tokio::io::stdout()));
+    // The taint sensor is shared by both directions (records results, checks calls).
+    let tracker = taint.then(|| Arc::new(Mutex::new(TaintTracker::new())));
 
-    if approve {
-        eprintln!(
-            "foreguard: promote-to-live for `{program}` — read-only tools run for real; each \
-             mutation pauses for your approval, and only what you approve executes."
-        );
+    let mode = if taint {
+        "Context Foresight — untrusted tool output is tainted; any mutation it reaches forces your \
+         approval"
+    } else if approve {
+        "promote-to-live — each mutation pauses for your approval; only what you approve executes"
     } else {
-        eprintln!(
-            "foreguard: previewing mutating tool calls to `{program}` — read-only tools run for \
-             real, mutations are intercepted and NOT executed."
-        );
-    }
+        "preview — mutating tool calls are intercepted and NOT executed"
+    };
+    eprintln!("foreguard: {mode}. Wrapping `{program}` (read-only tools run for real).");
 
     // host → foreguard → server (intercepting mutations). On host close, dropping
     // `server_in` closes the server's stdin so it can finish and flush.
     let host_out_a = host_out.clone();
+    let tracker_a = tracker.clone();
     let host_to_server = async move {
         let mut host_in = BufReader::new(tokio::io::stdin()).lines();
         while let Ok(Some(l)) = host_in.next_line().await {
+            // Record provenance for every tool call (even read-only sources).
+            let meta = tool_call_meta(&l);
+            if let (Some(tr), Some((id, name, _))) = (&tracker_a, &meta) {
+                tr.lock().await.note_request(id, name);
+            }
             match inspect(&l) {
                 Inspection::Passthrough => {
                     if !forward_line(&mut server_in, &l).await {
                         break;
                     }
                 }
-                Inspection::Mutation(p) if approve => {
-                    // Promote-to-live: show the exact effect, ask, and execute only
-                    // if the human says yes. The agent is blocked awaiting this
-                    // tool result, so pausing for approval is safe.
-                    eprint!("{}", p.prompt);
-                    if approved_on_tty().await {
-                        eprintln!("✔  approved — executing for real");
-                        if !forward_line(&mut server_in, &l).await {
-                            break;
+                Inspection::Mutation(p) => {
+                    // Did untrusted data flow into this mutation? (Rule-of-Two check.)
+                    let taint_reason = match (&tracker_a, &meta) {
+                        (Some(tr), Some((_, _, args))) => tr.lock().await.check_mutation(args),
+                        _ => None,
+                    };
+                    if let Some(reason) = &taint_reason {
+                        eprintln!(
+                            "⛔  RULE-OF-TWO VIOLATION — this mutation carries untrusted data \
+                             (`{reason}`); forcing human approval."
+                        );
+                    }
+                    // The human gate fires for every mutation under --approve, and
+                    // for any tainted mutation regardless: untrusted data driving a
+                    // mutation must never auto-run.
+                    if approve || taint_reason.is_some() {
+                        eprint!("{}", p.prompt);
+                        if approved_on_tty().await {
+                            eprintln!("✔  approved — executing for real");
+                            if !forward_line(&mut server_in, &l).await {
+                                break;
+                            }
+                        } else {
+                            eprintln!("✗  denied — dry-run, nothing executed");
+                            write_line(&host_out_a, &p.synthetic).await;
                         }
                     } else {
-                        eprintln!("✗  denied — dry-run, nothing executed");
+                        eprintln!("{}", p.log);
                         write_line(&host_out_a, &p.synthetic).await;
                     }
-                }
-                Inspection::Mutation(p) => {
-                    eprintln!("{}", p.log);
-                    write_line(&host_out_a, &p.synthetic).await;
                 }
             }
         }
         drop(server_in);
     };
 
-    // server → host (verbatim). Runs until the server closes its stdout.
+    // server → host (verbatim), tainting untrusted-source results as they pass.
     let host_out_b = host_out.clone();
+    let tracker_b = tracker.clone();
     let server_to_host = async move {
         let mut server_lines = BufReader::new(server_out).lines();
         while let Ok(Some(l)) = server_lines.next_line().await {
+            if let Some(tr) = &tracker_b {
+                if let Some((id, text)) = result_meta(&l) {
+                    tr.lock().await.note_result(&id, &text);
+                }
+            }
             write_line(&host_out_b, &l).await;
         }
     };
