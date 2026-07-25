@@ -5,6 +5,48 @@ this project aims to follow [Semantic Versioning](https://semver.org) from 1.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Capability-annotation awareness.** The proxy now learns the `readOnlyHint` and
+  `destructiveHint` a server publishes in its `tools/list` reply and takes them
+  into account when judging a later `tools/call`.
+
+  Found by running against a real `@modelcontextprotocol/server-filesystem`
+  rather than a fixture: `directory_tree` was being intercepted on every call
+  even though the server declares it read-only. Directory exploration is
+  constant, so that is the difference between a proxy people keep and one they
+  uninstall on day one.
+
+  Hints are honoured **asymmetrically**, which is the whole design:
+  - Upgrades are always trusted (`destructiveHint: true`, `readOnlyHint: false`).
+  - A downgrade from `readOnlyHint: true` applies **only** when our own lexical
+    read already finds the name benign, and only when the arguments reveal
+    nothing. A server declaring `readOnlyHint: true` on `delete_file` changes
+    nothing.
+
+  Distinguishing "unrecognised" from "recognised as dangerous" matters here,
+  because `classify` returns the same verdict for both. Rather than re-listing
+  kedge's vocabulary, which would drift, we ask kedge itself: prefix the name
+  with a known read verb and see whether deny-wins still trips.
+
+  Trade, stated rather than buried: for a name we do not recognise we now take
+  the server's word. A hostile server could pair an innocuous name with
+  `readOnlyHint: true` and be forwarded where fail-safe would have intercepted.
+  It cannot do so for anything that reads as dangerous, and taint tracking still
+  applies to whatever comes back.
+
+  The registry is best-effort by construction: a hint only exists after
+  `tools/list` has round-tripped, so a `tools/call` that beats it gets the
+  fail-safe verdict.
+
+### Testing
+
+- The adversarial battery is now a committed regression suite. Every case was
+  fired at the live filesystem server through the proxy and validated with a
+  positive control (the same `write_file`, with Foreguard removed, really does
+  overwrite the target). 15 name-obfuscation variants, 4 argument-hidden
+  mutations, plus the real server's 9 read-only and 4 destructive tools.
+
 ## [0.5.0] — 2026-07-25
 
 ### Added
