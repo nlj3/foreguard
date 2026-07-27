@@ -33,6 +33,7 @@ mod mcp;
 mod promote;
 mod proxy;
 mod taint;
+mod ui;
 use classify::classify_call;
 
 #[derive(Parser)]
@@ -85,6 +86,14 @@ enum Command {
         /// to this file.
         #[arg(long, value_name = "PATH")]
         ledger: Option<std::path::PathBuf>,
+        /// Ask for approval on a local web page instead of the terminal.
+        ///
+        /// Use this whenever an MCP host spawns Foreguard for you (Claude
+        /// Desktop, Cursor, VS Code): those have no controlling terminal, so the
+        /// `/dev/tty` prompt cannot be shown and every mutation is denied by
+        /// default. Loopback only, and the URL carries a secret token.
+        #[arg(long, value_name = "ADDR", num_args = 0..=1, default_missing_value = "127.0.0.1:7878")]
+        ui: Option<String>,
         /// The MCP server command to wrap, given after `--`.
         #[arg(last = true, required = true)]
         server: Vec<String>,
@@ -163,8 +172,9 @@ async fn main() -> Result<()> {
             approve,
             taint,
             ledger,
+            ui,
             server,
-        } => proxy::run_proxy(server, approve, taint, ledger).await,
+        } => proxy::run_proxy(server, approve, taint, ledger, ui).await,
         Command::Promote {
             ledger,
             all,

@@ -243,10 +243,25 @@ pub async fn run_proxy(
     approve: bool,
     taint: bool,
     ledger_path: Option<PathBuf>,
+    ui_addr: Option<String>,
 ) -> Result<()> {
     let (program, args) = server
         .split_first()
         .context("`foreguard proxy` needs a server command after `--`")?;
+
+    // Choose where the human is asked, before anything is spawned: if the UI was
+    // requested and cannot bind, that is a hard error. Falling back to the tty
+    // would be the worst outcome available, because under a GUI host the tty
+    // approver always answers "no" and the run would look like it was working.
+    let approver = match &ui_addr {
+        Some(addr) => {
+            let ui = crate::ui::ApprovalUi::bind(addr).await?;
+            eprintln!("🔓  approval UI at {}", ui.url());
+            eprintln!("    Keep this URL private: anything that has it can approve a mutation.");
+            Approver::Ui(ui)
+        }
+        None => Approver::Tty,
+    };
 
     let mut child = Command::new(program)
         .args(args)
@@ -309,7 +324,7 @@ pub async fn run_proxy(
             &catalogue_a,
             &mut ledger,
             approve,
-            Approver::Tty,
+            approver.clone(),
         )
         .await;
         drop(server_in);
@@ -426,8 +441,19 @@ async fn pump_host_to_server<R, W, O>(
                     // for any tainted mutation regardless: untrusted data driving a
                     // mutation must never auto-run.
                     if approve || taint_reason.is_some() {
-                        eprint!("{}", p.prompt);
-                        if approver.ask().await {
+                        // The "[y/N]" prompt belongs to the tty approver. Printing
+                        // it while the decision is actually happening in a browser
+                        // tells the reader to press a key that does nothing.
+                        if approver.prompts_on_tty() {
+                            eprint!("{}", p.prompt);
+                        }
+                        let req = crate::ui::ApprovalRequest {
+                            tool: p.tool.clone(),
+                            risk: p.risk,
+                            effect: p.effect.clone(),
+                            taint: taint_reason.clone(),
+                        };
+                        if approver.ask(req).await {
                             eprintln!("✔  approved — executing for real");
                             let ok = forward_line(server_in, &l).await;
                             log_mutation(ledger, &meta, &p, taint_reason.as_deref(), "executed");
@@ -547,9 +573,12 @@ async fn write_line<O: AsyncWrite + Unpin>(out: &Arc<Mutex<O>>, line: &str) {
 /// How the human decision is obtained. Production asks the controlling terminal;
 /// tests inject a fixed answer so the pumping logic can be driven end to end
 /// without a tty. Keeping this explicit is what makes the loop testable at all.
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub(crate) enum Approver {
     Tty,
+    /// A page on loopback. The only approver that works when the host is a GUI
+    /// and there is no controlling terminal to prompt on.
+    Ui(std::sync::Arc<crate::ui::ApprovalUi>),
     #[cfg(test)]
     AlwaysApprove,
     #[cfg(test)]
@@ -557,9 +586,19 @@ pub(crate) enum Approver {
 }
 
 impl Approver {
-    async fn ask(self) -> bool {
+    /// Whether this approver reads the answer from the terminal, and therefore
+    /// whether the "[y/N]" prompt means anything.
+    fn prompts_on_tty(&self) -> bool {
+        matches!(self, Approver::Tty)
+    }
+
+    /// `req` describes the call for approvers that have somewhere to show it.
+    /// The tty approver ignores it: its prompt was already written to stderr,
+    /// immediately above the cursor the human is looking at.
+    async fn ask(&self, req: crate::ui::ApprovalRequest) -> bool {
         match self {
             Approver::Tty => approved_on_tty().await,
+            Approver::Ui(ui) => ui.request(req).await,
             #[cfg(test)]
             Approver::AlwaysApprove => true,
             #[cfg(test)]

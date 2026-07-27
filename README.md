@@ -200,6 +200,21 @@ The figure is pinned by a golden file and re-run by CI on a clean checkout.
   mutation pauses for a `[y/N]` on your terminal, and approving forwards the *exact*
   call you saw to execute for real. Fail-safe — only an explicit `y` runs; no
   terminal means dry-run. What you previewed is what runs.
+- ✅ **Approval UI** (`foreguard proxy --approve --ui`) — the same gate, on a page,
+  because the terminal one has nowhere to draw when it matters. An MCP host spawns
+  Foreguard as a stdio child, and a GUI host (Claude Desktop, Cursor, VS Code) has
+  no controlling terminal: `/dev/tty` fails with ENXIO, the prompt is never shown,
+  and every mutation is denied. `--ui` moves the decision to `127.0.0.1`, opens your
+  browser on the first approval, and shows the tool, the risk, the concrete effect
+  and any Rule-of-Two violation with Approve and Deny.
+
+  It is an approval authority, so it is built like one: loopback-only (a
+  non-loopback bind is refused, not warned about), a 256-bit token from
+  `/dev/urandom` on every request, `Host` validated against loopback literals to
+  stop DNS rebinding, no CORS headers ever, and `POST /decide` requires
+  `application/json` so a cross-origin form post cannot approve anything. Closing
+  the tab, a dropped socket, a garbage body and a 180-second silence all resolve to
+  *deny*. `FOREGUARD_NO_OPEN=1` stops it reaching for your browser.
 - ✅ **Context Foresight — taint tracking** (`foreguard proxy --taint`) — tracks the
   provenance of tool output; when data from an untrusted source (web, inbox, RAG)
   reaches a mutating call, flags a **Rule-of-Two violation** and forces approval.
