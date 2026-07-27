@@ -1,0 +1,200 @@
+<!doctype html>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="referrer" content="no-referrer" />
+<title>foreguard · approve</title>
+<style>
+  :root {
+    --bg: #0f1113;
+    --panel: #16191c;
+    --line: #262b30;
+    --fg: #e8e6e1;
+    --muted: #9aa0a6;
+    --warn: #d98a4a;
+    --danger: #d9534f;
+    --ok: #6fbf8b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: grid;
+    place-items: center;
+    padding: 24px;
+    background: var(--bg);
+    color: var(--fg);
+    font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  main { width: 100%; max-width: 620px; }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 22px;
+  }
+  .kicker {
+    font: 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 0 0 10px;
+  }
+  h1 {
+    margin: 0 0 4px;
+    font-size: 20px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+  .tool { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .risk {
+    display: inline-block;
+    margin-left: 8px;
+    padding: 1px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    border: 1px solid currentColor;
+  }
+  .risk.medium { color: var(--warn); }
+  .risk.high { color: var(--danger); }
+  .effect {
+    margin: 16px 0 0;
+    padding: 12px 14px;
+    background: #0b0d0f;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 13px;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  .taint {
+    margin: 14px 0 0;
+    padding: 12px 14px;
+    border: 1px solid rgba(217, 83, 79, 0.4);
+    background: rgba(217, 83, 79, 0.08);
+    border-radius: 6px;
+    font-size: 13.5px;
+  }
+  .taint b { color: var(--danger); }
+  .taint code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    overflow-wrap: anywhere;
+  }
+  .actions { display: flex; gap: 10px; margin-top: 20px; }
+  button {
+    flex: 1;
+    padding: 11px 16px;
+    font: inherit;
+    font-weight: 600;
+    border-radius: 7px;
+    border: 1px solid var(--line);
+    background: #1d2126;
+    color: var(--fg);
+    cursor: pointer;
+  }
+  button:hover { border-color: #3a4149; }
+  button.approve { border-color: rgba(111, 191, 139, 0.5); color: var(--ok); }
+  button:disabled { opacity: 0.5; cursor: default; }
+  .foot { margin-top: 14px; font-size: 12.5px; color: var(--muted); }
+  .idle { text-align: center; color: var(--muted); }
+  .idle .dot {
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--ok);
+    margin-right: 7px;
+    vertical-align: middle;
+  }
+</style>
+
+<main id="root">
+  <div class="card idle"><span class="dot"></span>Waiting for foreguard…</div>
+</main>
+
+<script>
+  // The token is in this page's own URL. Every request carries it; a page that
+  // cannot read this URL cannot forge one.
+  const TOKEN = new URLSearchParams(location.search).get('t') || ''
+  const root = document.getElementById('root')
+  let showing = null
+  let busy = false
+
+  const esc = (s) =>
+    String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c])
+
+  function idle(msg) {
+    root.innerHTML = `<div class="card idle"><span class="dot"></span>${esc(msg)}</div>`
+  }
+
+  function render(p) {
+    root.innerHTML = `
+      <div class="card">
+        <p class="kicker">approval required</p>
+        <h1><span class="tool">${esc(p.tool)}</span><span class="risk ${esc(p.risk)}">${esc(p.risk)}</span></h1>
+        <p style="margin:2px 0 0;color:var(--muted);font-size:13.5px">
+          This call mutates. Nothing has run yet.
+        </p>
+        ${p.effect ? `<div class="effect">${esc(p.effect)}</div>` : ''}
+        ${
+          p.taint
+            ? `<div class="taint"><b>Rule of Two violation.</b> Untrusted data is driving this
+                 mutation (<code>${esc(p.taint)}</code>). Approving lets content foreguard did not
+                 trust decide what happens.</div>`
+            : ''
+        }
+        <div class="actions">
+          <button id="deny">Deny</button>
+          <button id="approve" class="approve">Approve &amp; run</button>
+        </div>
+        <p class="foot">
+          Denying keeps it a dry-run. Doing nothing denies it too: the request expires.
+        </p>
+      </div>`
+    document.getElementById('approve').onclick = () => decide(true)
+    document.getElementById('deny').onclick = () => decide(false)
+  }
+
+  async function decide(approve) {
+    if (busy) return
+    busy = true
+    for (const b of root.querySelectorAll('button')) b.disabled = true
+    try {
+      await fetch(`/decide?t=${encodeURIComponent(TOKEN)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ approve }),
+      })
+      showing = null
+      idle(approve ? 'Approved. Waiting for foreguard…' : 'Denied. Waiting for foreguard…')
+    } catch {
+      // The proxy went away. It denies on a dropped channel, so the safe thing
+      // already happened; just say so.
+      idle('Lost contact with foreguard. Nothing was executed.')
+    } finally {
+      busy = false
+    }
+  }
+
+  async function poll() {
+    try {
+      const r = await fetch(`/pending?t=${encodeURIComponent(TOKEN)}`, { cache: 'no-store' })
+      if (!r.ok) return idle('This link is no longer valid.')
+      const p = await r.json()
+      const key = p && JSON.stringify(p)
+      if (key !== showing) {
+        showing = key
+        if (p) render(p)
+        else if (!busy) idle('Waiting for foreguard…')
+      }
+    } catch {
+      idle('foreguard is not running.')
+    }
+  }
+
+  poll()
+  setInterval(poll, 700)
+</script>
