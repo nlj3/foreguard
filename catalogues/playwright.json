@@ -1,0 +1,227 @@
+{
+  "slug": "playwright",
+  "command": "npx -y @playwright/mcp@latest",
+  "serverInfo": {
+    "name": "Playwright",
+    "version": "1.62.0-alpha-1783623505000"
+  },
+  "protocolVersion": "2024-11-05",
+  "tools": [
+    {
+      "name": "browser_click",
+      "annotations": {
+        "title": "Click",
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "browser_close",
+      "annotations": {
+        "title": "Close browser",
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "browser_console_messages",
+      "annotations": {
+        "title": "Get console messages",
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "browser_drag",
+      "annotations": {
+        "title": "Drag mouse",
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "browser_drop",
+      "annotations": {
+        "title": "Drop files or data onto an element",
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "browser_evaluate",
+      "annotations": {
+        "title": "Evaluate JavaScript",
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "browser_file_upload",
+      "annotations": {
+        "title": "Upload files",
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "browser_fill_form",
+      "annotations": {
+        "title": "Fill form",
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "browser_find",
+      "annotations": {
+        "title": "Find in page snapshot",
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "browser_handle_dialog",
+      "annotations": {
+        "title": "Handle a dialog",
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "browser_hover",
+      "annotations": {
+        "title": "Hover mouse",
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "browser_navigate",
+      "annotations": {
+        "title": "Navigate to a URL",
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "browser_navigate_back",
+      "annotations": {
+        "title": "Go back",
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "browser_network_request",
+      "annotations": {
+        "title": "Show network request details",
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "browser_network_requests",
+      "annotations": {
+        "title": "List network requests",
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "browser_press_key",
+      "annotations": {
+        "title": "Press a key",
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "browser_resize",
+      "annotations": {
+        "title": "Resize browser window",
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "browser_run_code_unsafe",
+      "annotations": {
+        "title": "Run Playwright code (unsafe)",
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "browser_select_option",
+      "annotations": {
+        "title": "Select option",
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "browser_snapshot",
+      "annotations": {
+        "title": "Page snapshot",
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "browser_tabs",
+      "annotations": {
+        "title": "Manage tabs",
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "browser_take_screenshot",
+      "annotations": {
+        "title": "Take a screenshot",
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "browser_type",
+      "annotations": {
+        "title": "Type text",
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "browser_wait_for",
+      "annotations": {
+        "title": "Wait for",
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "openWorldHint": true
+      }
+    }
+  ]
+}

@@ -138,6 +138,29 @@ agent proposes.
 Early. The classifier and the Mutation Plan are real and tested; the surface around
 them is being built.
 
+**Measured against real servers:**
+
+```console
+$ foreguard ecosystem
+  TOTAL                   98      63     51    0   12
+
+agreement 81.0% of 63 scoreable tools (35 of 98 carry no readOnlyHint
+and are excluded rather than assumed)
+
+false negatives: 0. No tool a server calls mutating was judged read-only.
+```
+
+Ten MCP servers run over stdio, their catalogues captured with
+`scripts/capture-catalogues.mjs` and committed, then scored offline against the
+`readOnlyHint` each author set by hand. The kill criterion was written first: one
+false negative, a mutation judged read-only, invalidates the approach. There are
+none. The twelve disagreements are all the other way, which for a deny-wins
+classifier is the correct direction to be wrong in.
+
+Scoring is name-only, because a catalogue has no arguments to inspect. What runs
+at proxy time also reads arguments, so the live classifier is at least this good.
+The figure is pinned by a golden file and re-run by CI on a clean checkout.
+
 **Shipped:**
 
 - ✅ **Argument-aware classification** — the preview inspects a tool's *arguments*,
@@ -198,7 +221,7 @@ $ jq -c '{tool,kind,taint,decision}' run.jsonl
   the loop: record a plan in dry-run, review it offline, then replay the *exact* calls
   for real. Foreguard becomes a minimal MCP client (handshake + verbatim `tools/call`).
   Mutations only by default; each confirmed on the terminal unless `--yes`; fail-safe.
-- ✅ **Stateless MCP (`2026-07-28`)** — the spec that removes the `initialize`
+- ✅ **Stateless MCP release candidate (`2026-07-28`)** — the spec that removes the `initialize`
   handshake and moves client identity into `_meta` on every request. `promote`
   negotiates `server/discover` first and falls back to the legacy handshake for older
   servers. Because identity is now a per-message claim rather than something pinned

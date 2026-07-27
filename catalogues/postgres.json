@@ -1,0 +1,15 @@
+{
+  "slug": "postgres",
+  "command": "npx -y @modelcontextprotocol/server-postgres postgresql://localhost/postgres",
+  "serverInfo": {
+    "name": "example-servers/postgres",
+    "version": "0.1.0"
+  },
+  "protocolVersion": "2024-11-05",
+  "tools": [
+    {
+      "name": "query",
+      "annotations": null
+    }
+  ]
+}

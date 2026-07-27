@@ -40,6 +40,37 @@ jobs:
       - name: Build release
         run: cargo build --release
 
+  # nlj.dev publishes an accuracy figure for this classifier and tells readers
+  # the command that produces it. That promise is about a clean clone with a
+  # Rust toolchain and nothing else, so this job is deliberately unlike `test`
+  # above: no cargo cache, and it runs the published command rather than a
+  # `cargo test` that happens to cover the same code.
+  #
+  # It needs no network. The server catalogues are captured by
+  # scripts/capture-catalogues.mjs (which does need npx) and committed, so the
+  # score is reproducible by anyone, offline, forever. Capture is a dated act
+  # against the live ecosystem; scoring is not allowed to depend on it.
+  repro:
+    name: reproducibility · published command on a clean checkout
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Run the command published on nlj.dev
+        shell: bash # for pipefail; the default `bash -e` would swallow a failure
+        run: cargo run --quiet -- ecosystem | tee ecosystem_report.txt
+
+      - name: Output must match the figures the site quotes
+        run: diff -u tests/golden/ecosystem_report.txt ecosystem_report.txt
+
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ecosystem-report
+          path: ecosystem_report.txt
+          if-no-files-found: error
+
   audit:
     name: supply chain · cargo audit
     runs-on: ubuntu-latest

@@ -26,6 +26,7 @@ use serde::{Deserialize, Serialize};
 
 mod classify;
 mod diff;
+mod ecosystem;
 mod effect;
 mod ledger;
 mod mcp;
@@ -111,6 +112,14 @@ enum Command {
         #[arg(last = true)]
         server: Vec<String>,
     },
+
+    /// Score the classifier against what real MCP servers declare about their
+    /// own tools, from the catalogues captured in `catalogues/`.
+    ///
+    /// Prints agreement, false negatives (a mutation judged read-only, the class
+    /// that matters) and false positives, per server and in total. Offline and
+    /// deterministic: the catalogues are embedded in the binary.
+    Ecosystem,
 }
 
 /// One tool call an agent wants to make.
@@ -163,6 +172,10 @@ async fn main() -> Result<()> {
             dry_run,
             server,
         } => promote::run_promote(ledger, server, all, yes, dry_run).await,
+        Command::Ecosystem => {
+            print!("{}", ecosystem::render(&ecosystem::score()));
+            Ok(())
+        }
     }
 }
 

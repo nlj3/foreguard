@@ -1,0 +1,15 @@
+{
+  "slug": "aws-kb-retrieval",
+  "command": "npx -y @modelcontextprotocol/server-aws-kb-retrieval",
+  "serverInfo": {
+    "name": "aws-kb-retrieval-server",
+    "version": "0.2.0"
+  },
+  "protocolVersion": "2024-11-05",
+  "tools": [
+    {
+      "name": "retrieve_from_aws_kb",
+      "annotations": null
+    }
+  ]
+}
