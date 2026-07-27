@@ -1,0 +1,179 @@
+name: Release
+
+# Tagging `v*` builds the CLI for each supported host and attaches the binaries
+# to a draft GitHub Release. crates.io is still the primary route
+# (`cargo install foreguard`); this is for people who want the thing without a
+# Rust toolchain.
+#
+# Every non-obvious choice below is a lesson already paid for in the kedge
+# release pipeline, where two tags looked released and shipped nothing.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    # A job with no available runner queues to GitHub's 24h ceiling and then
+    # cancels the whole run, taking `release` with it because it `needs: build`.
+    # That is exactly how two kedge tags produced empty releases. A build that
+    # cannot get a runner should fail in half an hour and say why.
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: macos-latest,  target: aarch64-apple-darwin,     ext: "" }
+          # Cross-compiled from the Apple Silicon runner. `macos-13` was retired,
+          # and asking for it is what hung the kedge releases; the Apple
+          # toolchain targets both architectures from either host anyway.
+          - { os: macos-latest,  target: x86_64-apple-darwin,      ext: "" }
+          - { os: ubuntu-latest, target: x86_64-unknown-linux-gnu, ext: "" }
+          #
+          # No Windows target, deliberately. Foreguard reads `/dev/urandom` for
+          # the approval token and `/dev/tty` for the terminal prompt, so on
+          # Windows both approval paths are dead: `--ui` fails to bind and
+          # `--approve` denies everything. Shipping a binary whose entire
+          # promote-to-live feature cannot work would be worse than shipping
+          # none. Windows support means replacing both, and that is a decision,
+          # not a matrix entry.
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Build
+        run: cargo build --release --bin foreguard --target ${{ matrix.target }}
+
+      - name: Package
+        shell: bash
+        run: |
+          set -euo pipefail
+          bin="target/${{ matrix.target }}/release/foreguard${{ matrix.ext }}"
+          test -f "$bin" || { echo "::error::binary not found at $bin"; exit 1; }
+          mkdir -p dist
+          name="foreguard-${{ github.ref_name }}-${{ matrix.target }}"
+          # BUSL is source-available, not OSI open source, so the terms travel
+          # in the same archive as the binary.
+          cp LICENSE README.md "$bin" dist/
+          tar czf "$name.tar.gz" -C dist .
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: foreguard-${{ matrix.target }}
+          path: "*.tar.gz"
+          if-no-files-found: error
+
+  release:
+    name: Publish release
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Checksums
+        run: |
+          cd artifacts
+          sha256sum * > SHA256SUMS
+          cat SHA256SUMS
+
+      # Read the annotation through the API, NOT via
+      # `git tag -l --format='%(contents)'`. actions/checkout leaves a
+      # lightweight tag in the local clone, and `%(contents)` on a lightweight
+      # tag silently falls back to the message of the commit it points at. A
+      # kedge release went out with a CI commit message as its notes and nothing
+      # failed. Asking for the tag object removes the fallback that fooled it.
+      - name: Assemble release notes from the tag annotation
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          type=$(gh api "repos/${{ github.repository }}/git/refs/tags/$TAG" -q '.object.type')
+          if [ "$type" != "tag" ]; then
+            echo "::error::$TAG is a lightweight tag; release notes come from an annotated tag" >&2
+            exit 1
+          fi
+          obj=$(gh api "repos/${{ github.repository }}/git/refs/tags/$TAG" -q '.object.sha')
+          gh api "repos/${{ github.repository }}/git/tags/$obj" -q '.message' > TAG_MESSAGE.md
+          if [ "$(wc -l < TAG_MESSAGE.md)" -lt 3 ]; then
+            echo "::error::the annotation for $TAG is too short to be release notes" >&2
+            cat TAG_MESSAGE.md >&2
+            exit 1
+          fi
+          {
+            cat TAG_MESSAGE.md
+            cat <<'BOILERPLATE'
+
+          ## Install
+
+          ```bash
+          cargo install foreguard
+          ```
+
+          Or download an archive below, extract, and put `foreguard` on your
+          `PATH`. Verify against `SHA256SUMS` before running.
+
+          macOS and Linux. Foreguard uses `/dev/urandom` and `/dev/tty`, so
+          Windows is not supported yet: both approval paths would be dead.
+
+          ## Licensing
+
+          Business Source License 1.1: free for non-commercial use, evaluation,
+          and internal non-revenue use. Commercial use requires a license.
+          Converts to Apache 2.0 on the Change Date.
+          BOILERPLATE
+          } > RELEASE_NOTES.md
+          cat RELEASE_NOTES.md
+
+      # Re-tagging has to actually re-release, and by default it does not:
+      # action-gh-release reuses an existing record for the tag and only swaps
+      # the assets, keeping the old body. kedge's v0.4.0 was rebuilt twice with
+      # fresh binaries and stale notes, passing both times.
+      #
+      # The `draft == true` filter is the entire safety of this step. A published
+      # release is something people have downloaded and linked to, and CI must
+      # never delete one.
+      - name: Clear any stale DRAFT release for this tag
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          ids=$(gh api "repos/${{ github.repository }}/releases" --paginate \
+                  --jq ".[] | select(.tag_name == \"$TAG\" and .draft == true) | .id")
+          if [ -z "$ids" ]; then
+            echo "no existing draft for $TAG; nothing to clear"
+            exit 0
+          fi
+          for id in $ids; do
+            echo "deleting stale draft release $id for $TAG"
+            gh api -X DELETE "repos/${{ github.repository }}/releases/$id"
+          done
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*
+          generate_release_notes: true
+          draft: true # reviewed before it goes public
+          body_path: RELEASE_NOTES.md
