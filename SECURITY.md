@@ -5,7 +5,7 @@ back — so its security posture is part of the product.
 
 ## Reporting a vulnerability
 
-Email **noeljacksonjs@gmail.com** with `[foreguard security]` in the subject, or
+Email **noel@nlj.dev** with `[foreguard security]` in the subject, or
 open a private security advisory. Please **do not** open a public issue for
 anything exploitable.
 
