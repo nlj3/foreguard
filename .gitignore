@@ -3,3 +3,7 @@
 
 # macOS
 .DS_Store
+
+# Wrangler writes an account id and project metadata into this cache. It was
+# committed once; it is local state, not source.
+.wrangler/

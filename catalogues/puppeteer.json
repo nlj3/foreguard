@@ -1,0 +1,39 @@
+{
+  "slug": "puppeteer",
+  "command": "npx -y @modelcontextprotocol/server-puppeteer",
+  "serverInfo": {
+    "name": "example-servers/puppeteer",
+    "version": "0.1.0"
+  },
+  "protocolVersion": "2024-11-05",
+  "tools": [
+    {
+      "name": "puppeteer_click",
+      "annotations": null
+    },
+    {
+      "name": "puppeteer_evaluate",
+      "annotations": null
+    },
+    {
+      "name": "puppeteer_fill",
+      "annotations": null
+    },
+    {
+      "name": "puppeteer_hover",
+      "annotations": null
+    },
+    {
+      "name": "puppeteer_navigate",
+      "annotations": null
+    },
+    {
+      "name": "puppeteer_screenshot",
+      "annotations": null
+    },
+    {
+      "name": "puppeteer_select",
+      "annotations": null
+    }
+  ]
+}

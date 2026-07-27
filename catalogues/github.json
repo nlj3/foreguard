@@ -1,0 +1,115 @@
+{
+  "slug": "github",
+  "command": "npx -y @modelcontextprotocol/server-github",
+  "serverInfo": {
+    "name": "github-mcp-server",
+    "version": "0.6.2"
+  },
+  "protocolVersion": "2024-11-05",
+  "tools": [
+    {
+      "name": "add_issue_comment",
+      "annotations": null
+    },
+    {
+      "name": "create_branch",
+      "annotations": null
+    },
+    {
+      "name": "create_issue",
+      "annotations": null
+    },
+    {
+      "name": "create_or_update_file",
+      "annotations": null
+    },
+    {
+      "name": "create_pull_request",
+      "annotations": null
+    },
+    {
+      "name": "create_pull_request_review",
+      "annotations": null
+    },
+    {
+      "name": "create_repository",
+      "annotations": null
+    },
+    {
+      "name": "fork_repository",
+      "annotations": null
+    },
+    {
+      "name": "get_file_contents",
+      "annotations": null
+    },
+    {
+      "name": "get_issue",
+      "annotations": null
+    },
+    {
+      "name": "get_pull_request",
+      "annotations": null
+    },
+    {
+      "name": "get_pull_request_comments",
+      "annotations": null
+    },
+    {
+      "name": "get_pull_request_files",
+      "annotations": null
+    },
+    {
+      "name": "get_pull_request_reviews",
+      "annotations": null
+    },
+    {
+      "name": "get_pull_request_status",
+      "annotations": null
+    },
+    {
+      "name": "list_commits",
+      "annotations": null
+    },
+    {
+      "name": "list_issues",
+      "annotations": null
+    },
+    {
+      "name": "list_pull_requests",
+      "annotations": null
+    },
+    {
+      "name": "merge_pull_request",
+      "annotations": null
+    },
+    {
+      "name": "push_files",
+      "annotations": null
+    },
+    {
+      "name": "search_code",
+      "annotations": null
+    },
+    {
+      "name": "search_issues",
+      "annotations": null
+    },
+    {
+      "name": "search_repositories",
+      "annotations": null
+    },
+    {
+      "name": "search_users",
+      "annotations": null
+    },
+    {
+      "name": "update_issue",
+      "annotations": null
+    },
+    {
+      "name": "update_pull_request_branch",
+      "annotations": null
+    }
+  ]
+}

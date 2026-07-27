@@ -1,0 +1,54 @@
+foreguard vs declared readOnlyHint
+
+server                  tools  scored  agree   FN   FP
+──────────────────────────────────────────────────────
+  aws-kb-retrieval         1       0      0    0    0
+  context7                 2       2      1    0    1
+  everything              13      13     12    0    1
+  filesystem              14      14     13    0    1
+  github                  26       0      0    0    0
+  memory                   9       9      8    0    1
+  playwright              24      24     17    0    7
+  postgres                 1       0      0    0    0
+  puppeteer                7       0      0    0    0
+  sequential-thinking      1       1      0    0    1
+
+  TOTAL                   98      63     51    0   12
+
+agreement 81.0% of 63 scoreable tools (35 of 98 carry no readOnlyHint
+and are excluded rather than assumed)
+
+false negatives: 0. No tool a server calls mutating was judged read-only.
+
+false positives (12): stricter than the server asked for, which is the
+safe direction for a deny-wins classifier. Each costs a confirmation, not a
+missed mutation.
+  context7::resolve-library-id
+  everything::trigger-long-running-operation
+  filesystem::directory_tree
+  memory::open_nodes
+  playwright::browser_console_messages
+  playwright::browser_find
+  playwright::browser_network_request
+  playwright::browser_network_requests
+  playwright::browser_snapshot
+  playwright::browser_take_screenshot
+  playwright::browser_wait_for
+  sequential-thinking::sequentialthinking
+
+captured from (server name and version as each reported it):
+  aws-kb-retrieval     aws-kb-retrieval-server 0.2.0
+  context7             Context7 3.2.5
+  everything           mcp-servers/everything 2.0.0
+  filesystem           secure-filesystem-server 0.2.0
+  github               github-mcp-server 0.6.2
+  memory               memory-server 0.6.3
+  playwright           Playwright 1.62.0-alpha-1783623505000
+  postgres             example-servers/postgres 0.1.0
+  puppeteer            example-servers/puppeteer 0.1.0
+  sequential-thinking  sequential-thinking-server 0.2.0
+
+The hint is the server author's opinion, not ground truth: a mislabelled tool
+moves this number without anything changing here. Classification is by name
+only, because a catalogue has no arguments to inspect, so this measures the
+weaker half of what runs at proxy time.
