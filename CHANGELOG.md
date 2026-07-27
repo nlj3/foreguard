@@ -5,6 +5,62 @@ this project aims to follow [Semantic Versioning](https://semver.org) from 1.0.0
 
 ## [Unreleased]
 
+## [0.7.0] — 2026-07-27
+
+The theme is reachability: two things that already worked but that nobody could
+get to.
+
+### Added
+
+- **An approval UI** (`foreguard proxy --approve --ui`). `--approve` was
+  documented as "the trust loop, closed", and in the case Foreguard is built for
+  it was closed in the wrong position. An MCP host spawns the proxy as a stdio
+  child, and a GUI host (Claude Desktop, Cursor, VS Code) has no controlling
+  terminal, so opening `/dev/tty` fails with ENXIO and the approver fails safe to
+  "no". Every mutation denied, permanently, with nothing to say why. Under a
+  terminal host it is not much better: the host owns the TUI, and two processes
+  reading the same tty is a fight, not a prompt.
+
+  The decision now happens on a page on loopback, showing the tool, the risk, the
+  concrete effect, and the Rule-of-Two reason when taint fired. Your browser opens
+  on the first approval, not at launch.
+
+  It is an approval authority, so it is built like one: loopback-only (a
+  non-loopback bind is refused, not warned about), a 256-bit token from
+  `/dev/urandom` on every request compared without an early exit, `Host` checked
+  against loopback literals so DNS rebinding fails, no CORS headers ever, and
+  `POST /decide` requires `application/json` so a cross-origin form post cannot
+  approve anything. A timeout, a dropped socket, a closed tab and an unparseable
+  body all resolve to *deny*. `FOREGUARD_NO_OPEN=1` stops it reaching for your
+  browser.
+
+- **`foreguard ecosystem`**, which scores the classifier against what real MCP
+  servers declare about their own tools and prints the table.
+
+### Changed
+
+- **The published accuracy figure is corrected, and lower.** nlj.dev claimed
+  "84.6% agreement, 80 tools, 10 servers" and pointed at a command that passes,
+  prints nothing, and asserts 38 hand-listed names with no per-server grouping and
+  no comparison against any declared hint. The figures came from a one-off that
+  existed in no repository.
+
+  Measured against ten real servers captured over stdio: **81.0% agreement over
+  63 scoreable tools of 98**, and **0 false negatives**. The claim that mattered
+  survives; the headline number was wrong. The 35 tools carrying no `readOnlyHint`
+  are excluded from the denominator rather than assumed either way.
+
+- The `[y/N]` prompt is suppressed under `--ui`, where it was telling the reader
+  to press a key that did nothing.
+- The stateless MCP spec (`2026-07-28`) is described as a release candidate,
+  because on the date of this release it still is one.
+
+### Fixed
+
+- `.wrangler/cache/` was tracked and not ignored. It carried a Cloudflare account
+  id, which does not belong in a public repository.
+
+
 ## [0.6.0] — 2026-07-25
 
 The theme is accuracy: making the preview show more, and making the verdict
