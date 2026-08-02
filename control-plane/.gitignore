@@ -1,0 +1,13 @@
+# Dependencies and build output
+node_modules/
+dist/
+
+# Local secrets — NEVER commit. Real secrets go via `wrangler secret put`.
+.dev.vars
+.dev.vars.*
+
+# Wrangler local state (local D1, caches, tmp)
+.wrangler/
+
+# Signing keys must never be committed
+*.key

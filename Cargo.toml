@@ -1,6 +1,6 @@
 [package]
 name = "foreguard"
-version = "0.7.0"
+version = "0.8.0"
 edition = "2021"
 license = "BUSL-1.1"
 description = "Preview what your AI agent is about to do — before it does it. A dry-run trust layer for autonomous agents, powered by kedge."
@@ -19,6 +19,22 @@ path = "src/main.rs"
 # Foreguard is *extracted from*, not forked from, kedge — it reuses kedge's
 # fail-safe, deny-wins tool classifier as its engine.
 kedge-core = "0.3.1"
+# Cedar is the authorization language AWS built for agent tool-call control
+# (Bedrock AgentCore) and donated to the CNCF. Its semantics — default-deny,
+# forbid-overrides-permit, order-independent, deterministic — are exactly
+# Foreguard's fail-safe, deny-wins ethos, so we adopt it rather than invent a DSL.
+cedar-policy = "4"
+# SHA-256 for the tamper-evident audit ledger's hash chain.
+sha2 = "0.10"
+# Ed25519 signing for the *signed head* — an instance attests its ledger head so the
+# audit trail is non-repudiable and a control-plane-side rewrite can't be forged.
+ed25519-dalek = "2"
+base64 = "0.22"
+getrandom = "0.2"
+# HTTP client for the live LLM spend gateway's upstream call. rustls only (no
+# system OpenSSL); the gateway forwards the caller's own auth header — it never
+# stores keys — so no TLS-server or credential features are needed.
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

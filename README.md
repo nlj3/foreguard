@@ -255,7 +255,60 @@ foreguard promote plan.jsonl --dry-run
 foreguard promote plan.jsonl -- npx -y @modelcontextprotocol/server-filesystem .
 ```
 
+## Beyond dry-run: authorize, meter, and prove
+
+The classifier decides *is this a mutation?* From 0.8.0, Foreguard also answers the
+next three questions — and can prove its answers after the fact.
+
+**Authorize with policy (Cedar).** Point the proxy at a [Cedar](https://www.cedarpolicy.com/)
+policy and each tool call is checked against it. A `forbid` hard-blocks (even under
+`--approve`); a `permit` runs a known-safe mutation without prompting; taint always
+overrides a permit. Money rules are cents-accurate via `context.dec.*`.
+
+```sh
+# refunds up to $50 auto-run; deleting system files is forbidden; cap the loop
+foreguard proxy --policy fleet.cedar -- npx -y @modelcontextprotocol/server-filesystem .
+# …or pull one centrally-managed policy from the control plane
+FOREGUARD_INGEST_TOKEN=… foreguard proxy --policy-url https://cp.example.com/v1/policy -- <server>
+```
+
+A policy that references a missing attribute **fails closed** (downgrades to the
+dry-run gate) — a broken `forbid` can never let a mutation through.
+
+**Meter spend, and kill the runaway.** Enforcement, not alerting: the moment
+cumulative spend crosses the budget, the next request is refused.
+
+```sh
+# offline: meter a stream of model responses and hard-stop at the budget
+cat responses.jsonl | foreguard meter --budget 5
+# live: a loopback gateway in front of the model API (it never stores your keys)
+foreguard gateway --upstream https://api.anthropic.com --budget 20
+#   then set ANTHROPIC_BASE_URL=http://127.0.0.1:8787
+```
+
+**Prove the audit trail.** The `--ledger` is a SHA-256 hash chain — any edit,
+deletion, or reorder is detectable — and an instance can *sign* its head so even a
+control-plane operator can't forge it.
+
+```sh
+foreguard verify run.jsonl                       # intact, or the exact tampered line
+foreguard keygen --out signing.key               # an Ed25519 key the instance holds
+FOREGUARD_INGEST_TOKEN=… foreguard report run.jsonl \
+  --to https://cp.example.com --instance agent-1 --key signing.key
+```
+
+**The fleet control plane** (`control-plane/`) is the commercial layer instances
+report to: a fleet dashboard, aggregated spend, central policy, a linkage-verified
+tamper-evident audit trail, **per-instance API keys** (a key can only report as
+itself, and is revocable), and **signed-head verification**. It's a Cloudflare
+Worker + D1; see [`control-plane/README.md`](control-plane/README.md).
+
+Honest scope: taint is best-effort, not sound; the gateway buffers responses rather
+than streaming them token-by-token yet; and server-side integrity today verifies
+chain *linkage* — full content re-verification runs via `foreguard verify`.
+
 ## License
 
 [Business Source License 1.1](LICENSE) — source-available; converts to Apache-2.0
-on the Change Date. See the file for details.
+on the Change Date. See the file for details. The `control-plane/` directory is also
+BUSL-1.1.

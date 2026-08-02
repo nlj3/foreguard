@@ -5,7 +5,70 @@ this project aims to follow [Semantic Versioning](https://semver.org) from 1.0.0
 
 ## [Unreleased]
 
-## [0.7.0] — 2026-07-27
+## [0.8.0] — 2026-08-01
+
+The theme is **authorization, spend, and a fleet** — Foreguard grows from a local
+dry-run trust surface into the open, local, framework-neutral enforcement point,
+with a commercial control plane it reports to. The classifier answered *"is this a
+mutation?"*; now policy answers *"is this **allowed**?"*, the meter answers *"can we
+afford it?"*, and the ledger can be **proven** — not just trusted.
+
+Everything is fail-safe by construction: policy can only add restrictions or lift
+babysitting on a known-safe call, never loosen the floor; the meter refuses rather
+than alerts; a broken policy or a bad signature fails closed.
+
+### Added
+
+- **Cedar policy authorization** (`foreguard proxy --policy <file>`). Adopts
+  [Cedar](https://www.cedarpolicy.com/) — the language AWS built for agent tool-call
+  control and donated to the CNCF — rather than a bespoke DSL, because its
+  semantics (default-deny, forbid-overrides-permit, deterministic) *are* Foreguard's
+  deny-wins ethos. A satisfied `forbid` hard-blocks a call (even under `--approve`);
+  a satisfied `permit` pre-authorizes a mutation to run without prompting; anything
+  neither permitted nor forbidden keeps the existing dry-run behavior. Policies see
+  the call as `context.{tool,risk,mutating,tainted,session_calls,session_cost,args.*}`,
+  with numeric arguments also exposed as Cedar decimals under `context.dec.*` so
+  cents-accurate money rules (`context.dec.amount.lessThanOrEqual(decimal("50.00"))`)
+  work. `session_calls` is a runaway-loop kill switch at the tool-call layer.
+  **Fail-safe:** any policy that errors at evaluation downgrades an `Allow` to the
+  dry-run gate — a silently-broken `forbid` can never fail open into execution. Taint
+  (Rule-of-Two) always overrides a `permit`.
+- **Central policy pull** (`foreguard proxy --policy-url <url>`) — fetch the fleet's
+  Cedar policy from a URL (the control plane's `/v1/policy`, or any endpoint) at
+  startup, so many proxies enforce one centrally-managed policy.
+- **LLM spend metering** (`foreguard meter`) — reads model-API responses as JSON
+  lines, prices each (Anthropic + OpenAI usage shapes, incl. nested streaming usage
+  and cache tokens) against a `--budget`, and the moment cumulative spend crosses the
+  budget it refuses every further request. Enforcement, not alerting.
+- **Live spend gateway** (`foreguard gateway --upstream <url> --budget <$>`) — a
+  loopback HTTP proxy in front of the model API. Point an agent's
+  `ANTHROPIC_BASE_URL`/`OPENAI_BASE_URL` at it; the budget kill switch refuses the
+  next request *before it is sent upstream*. The caller's own auth header is passed
+  through — Foreguard stores no keys. (Responses are buffered today, not streamed
+  token-by-token; that's the next step.)
+- **Tamper-evident ledger + `foreguard verify`** — the audit ledger is now a
+  SHA-256 hash chain: each entry carries `_fg:{seq,prev,hash}`, so editing, deleting,
+  or reordering any entry breaks the chain, and `verify` pinpoints the exact line.
+  Detection, not prevention — see the signed head below for the anchor.
+- **Signed ledger head** (`foreguard keygen`, `foreguard report --key`) — an instance
+  signs its ledger head with an Ed25519 key it holds. The control plane verifies the
+  signature, pins the public key on first sight, and rejects rollbacks — so the audit
+  trail is **non-repudiable**: even a control-plane operator can't forge a valid head.
+- **Fleet reporting** (`foreguard report <ledger> --to <url> --instance <id>`) — ships
+  the ledger's new entries and current spend to the control plane; idempotent across
+  re-runs (only entries past the server's accepted head are sent). The bearer token
+  is read from `FOREGUARD_INGEST_TOKEN`, never the command line.
+- **The control plane** (`control-plane/`, a TypeScript Cloudflare Worker + D1) — the
+  commercial layer instances report to: fleet view, aggregated spend, central Cedar
+  policy push/pull, a tamper-evident audit trail (verified for chain-linkage on
+  ingest), a self-contained dashboard, **per-instance API keys** (mint/revoke; a key
+  authenticates as its own instance, so one can't spoof another), and **signed-head
+  verification** (Ed25519 via WebCrypto). Source-available under BUSL-1.1.
+
+### Changed
+
+- The `--ledger` line format gains a top-level `_fg` integrity envelope. Payload
+  fields stay at the top level, so `jq`/`grep` and `promote` are unaffected.
 
 The theme is reachability: two things that already worked but that nobody could
 get to.

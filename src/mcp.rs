@@ -75,6 +75,12 @@ impl SessionIdentity {
             Some(_) => None,
         }
     }
+
+    /// The client identity established for this session, if one has been claimed —
+    /// used as the Cedar `principal` (`Agent::"…"`) when authorizing tool calls.
+    pub fn current(&self) -> Option<&str> {
+        self.first.as_deref()
+    }
 }
 
 /// Every string inside `_meta`, so untrusted content hiding there is scanned
