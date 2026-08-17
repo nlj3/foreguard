@@ -1,7 +1,7 @@
 # Foreguard
 
 [![CI](https://github.com/nlj3/foreguard/actions/workflows/ci.yml/badge.svg)](https://github.com/nlj3/foreguard/actions/workflows/ci.yml)
-[![License: BUSL-1.1](https://img.shields.io/badge/license-BUSL--1.1-orange.svg)](LICENSE)
+[![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](LICENSE)
 
 > **Preview what your AI agent is about to do — before it does it.**
 
@@ -53,13 +53,14 @@ injection (OWASP LLM01). Preview the effect **and** the provenance, then decide.
 
 Foreguard doesn't reinvent the engine — it **extracts** one: the fail-safe tool
 classifier from [**kedge**](https://github.com/nlj3/kedge), a deterministic
-AI-agent harness. Foreguard is the focused product; kedge is the substrate. (It's a
-git dependency, not a fork — same code, one source of truth.)
+AI-agent harness. Foreguard is the focused product; kedge is the substrate. (It
+depends on the published `kedge-core` crate, not a fork, so there is one source of
+truth.)
 
 ## Install
 
 ```sh
-cargo install --git https://github.com/nlj3/foreguard
+cargo install foreguard
 ```
 
 ## Usage
@@ -309,6 +310,13 @@ chain *linkage* — full content re-verification runs via `foreguard verify`.
 
 ## License
 
-[Business Source License 1.1](LICENSE) — source-available; converts to Apache-2.0
-on the Change Date. See the file for details. The `control-plane/` directory is also
-BUSL-1.1.
+Licensed under either of **[Apache License 2.0](LICENSE-APACHE)** or
+**[MIT license](LICENSE-MIT)** at your option. The `control-plane/` directory is
+covered by the same terms.
+
+Unless you explicitly state otherwise, any contribution intentionally submitted
+for inclusion in this project by you, as defined in the Apache-2.0 license, shall
+be dual licensed as above, without any additional terms or conditions.
+
+Versions already published to crates.io under BUSL-1.1 keep that licence; this
+change applies to versions released from here on.

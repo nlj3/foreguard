@@ -69,4 +69,4 @@ npm run deploy
   byte-for-byte — is a deliberate follow-up. Signed heads already close the
   operator-forgery gap.
 
-Source-available under [BUSL-1.1](../LICENSE), like the rest of Foreguard.
+Dual-licensed under [MIT OR Apache-2.0](../LICENSE), like the rest of Foreguard.

@@ -5,6 +5,13 @@ this project aims to follow [Semantic Versioning](https://semver.org) from 1.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Relicensed to `MIT OR Apache-2.0`.** Previously BUSL-1.1. Versions already
+  published to crates.io under BUSL-1.1 keep that licence; this change applies to
+  releases from here on. `LICENSE-MIT` and `LICENSE-APACHE` are now both present and
+  `LICENSE` points at the pair.
+
 ## [0.8.0] — 2026-08-01
 
 The theme is **authorization, spend, and a fleet** — Foreguard grows from a local

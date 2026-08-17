@@ -2,7 +2,7 @@
 name = "foreguard"
 version = "0.8.0"
 edition = "2021"
-license = "BUSL-1.1"
+license = "MIT OR Apache-2.0"
 description = "Preview what your AI agent is about to do — before it does it. A dry-run trust layer for autonomous agents, powered by kedge."
 repository = "https://github.com/nlj3/foreguard"
 homepage = "https://github.com/nlj3/foreguard"

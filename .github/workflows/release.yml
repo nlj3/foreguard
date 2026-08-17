@@ -65,9 +65,8 @@ jobs:
           test -f "$bin" || { echo "::error::binary not found at $bin"; exit 1; }
           mkdir -p dist
           name="foreguard-${{ github.ref_name }}-${{ matrix.target }}"
-          # BUSL is source-available, not OSI open source, so the terms travel
-          # in the same archive as the binary.
-          cp LICENSE README.md "$bin" dist/
+          # Apache-2.0 requires the license to travel with the binary.
+          cp LICENSE LICENSE-MIT LICENSE-APACHE README.md "$bin" dist/
           tar czf "$name.tar.gz" -C dist .
 
       - uses: actions/upload-artifact@v4
@@ -138,9 +137,7 @@ jobs:
 
           ## Licensing
 
-          Business Source License 1.1: free for non-commercial use, evaluation,
-          and internal non-revenue use. Commercial use requires a license.
-          Converts to Apache 2.0 on the Change Date.
+          Dual-licensed under **MIT OR Apache-2.0**, at your option.
           BOILERPLATE
           } > RELEASE_NOTES.md
           cat RELEASE_NOTES.md
