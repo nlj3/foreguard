@@ -31,8 +31,8 @@ cargo build --release
 ## The engine lives in kedge
 
 Foreguard's classifier is `kedge_core` from
-[kedge](https://github.com/nlj3/kedge). Fixes to classification logic usually
-belong upstream in kedge; Foreguard consumes it.
+[kedge](https://crates.io/crates/kedge). Classification logic is maintained
+there and Foreguard consumes it. If you find a problem with it, open an issue here.
 
 ## Reporting a vulnerability
 

@@ -52,7 +52,7 @@ injection (OWASP LLM01). Preview the effect **and** the provenance, then decide.
 ## Powered by kedge
 
 Foreguard doesn't reinvent the engine — it **extracts** one: the fail-safe tool
-classifier from [**kedge**](https://github.com/nlj3/kedge), a deterministic
+classifier from [**kedge**](https://crates.io/crates/kedge), a deterministic
 AI-agent harness. Foreguard is the focused product; kedge is the substrate. (It's a
 git dependency, not a fork — same code, one source of truth.)
 

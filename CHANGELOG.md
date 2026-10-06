@@ -260,7 +260,7 @@ behind it correct against real servers rather than against fixtures.
 - Initial release: `foreguard plan` produces a **Mutation Plan** from a JSON list
   of tool calls — classifying each as read-only (would run) or mutating
   (intercepted, previewed, not executed), with `--json` output.
-- Classification engine reused from [kedge](https://github.com/nlj3/kedge)
+- Classification engine reused from [kedge](https://crates.io/crates/kedge)
   (`kedge-core`) — fail-safe and deny-wins.
 - Pro hygiene: CI (fmt/clippy/test/audit on Linux + macOS), dependabot, pinned
   toolchain, BUSL-1.1 license.

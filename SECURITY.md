@@ -28,6 +28,5 @@ anything exploitable.
 - **Contain execution.** Foreguard is a preview/policy layer, not a sandbox. It
   does not stop code that a tool *does* run from doing whatever it wants.
 
-The classification engine is `kedge_core`; see
-[kedge's SECURITY.md](https://github.com/nlj3/kedge/blob/main/SECURITY.md) for the
-underlying threat model.
+The classification engine is `kedge_core`, published on crates.io as
+[kedge-core](https://crates.io/crates/kedge-core).
