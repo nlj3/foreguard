@@ -1,15 +1,15 @@
-//! Argument-aware classification — the difference between a *fast* preview and a
+//! Argument-aware classification separates a *fast* preview from a
 //! *trustworthy* one.
 //!
 //! kedge's [`classify`] is name-based and fail-safe, which catches most mutations.
-//! But a tool *named* for a read — `fetch`, `request`, `query` — can still mutate
+//! But a tool *named* for a read (`fetch`, `request`, `query`) can still mutate
 //! through its **arguments**: `method: "DELETE"`, a `DELETE` SQL statement, an `rm`
 //! in a command. A preview that misses those is worse than none: it gives false
 //! confidence. This module inspects the arguments and **upgrades** a verdict when
 //! they reveal a hidden mutation.
 //!
 //! Like the name classifier, arguments may only make a call *more* restricted,
-//! never less — a mutating name stays mutating no matter how benign its args look.
+//! never less. A mutating name stays mutating no matter how benign its args look.
 
 use kedge_core::{classify, Risk, ToolSafety};
 use serde_json::Value;
@@ -18,14 +18,14 @@ use serde_json::Value;
 pub struct Verdict {
     pub safety: ToolSafety,
     /// When the *arguments* (not the name) are what flagged the mutation, a short
-    /// human explanation — shown in the Mutation Plan so the call is legible.
+    /// human explanation that the Mutation Plan shows so the call is legible.
     pub arg_reason: Option<String>,
 }
 
 /// Classify a tool call by name **and** arguments. Fail-safe and upgrade-only.
 pub fn classify_call(name: &str, args: &Value) -> Verdict {
     let base = classify(name);
-    // The name already flagged a mutation — arguments can't downgrade it, so stop.
+    // The name already flagged a mutation and arguments can't downgrade it, so stop.
     if base.is_mutating() {
         return Verdict {
             safety: base,
@@ -49,7 +49,7 @@ pub fn classify_call(name: &str, args: &Value) -> Verdict {
 fn args_reveal_mutation(args: &Value) -> Option<(Risk, String)> {
     let obj = args.as_object()?;
 
-    // 1. HTTP method — a read-looking `fetch`/`request` with a writing method.
+    // 1. A read-looking `fetch`/`request` with a writing HTTP method.
     for key in ["method", "http_method"] {
         if let Some(m) = obj.get(key).and_then(Value::as_str) {
             if let Some(risk) = http_method_mutation(m) {
@@ -64,7 +64,7 @@ fn args_reveal_mutation(args: &Value) -> Option<(Risk, String)> {
         }
     }
 
-    // 2. Operation/action discriminator — an arg that *names* the real action.
+    // 2. An arg that *names* the real action (an operation/action discriminator).
     //    Reuse the engine on the value (deny-wins applies here too).
     for key in ["operation", "action", "verb", "mode", "op"] {
         if let Some(v) = obj.get(key).and_then(Value::as_str) {
@@ -77,7 +77,7 @@ fn args_reveal_mutation(args: &Value) -> Option<(Risk, String)> {
         }
     }
 
-    // 3. SQL — a `query`/`sql` whose leading keyword mutates the database.
+    // 3. A `query`/`sql` whose leading SQL keyword mutates the database.
     for key in ["query", "sql", "statement"] {
         if let Some(q) = obj.get(key).and_then(Value::as_str) {
             if let Some((risk, verb)) = sql_mutation(q) {
@@ -89,7 +89,7 @@ fn args_reveal_mutation(args: &Value) -> Option<(Risk, String)> {
         }
     }
 
-    // 4. Shell — a `command`/`cmd`/`script` with a destructive program or redirect.
+    // 4. A shell `command`/`cmd`/`script` with a destructive program or redirect.
     for key in ["command", "cmd", "script"] {
         if let Some(c) = obj.get(key).and_then(Value::as_str) {
             if let Some(reason) = shell_mutation(c) {
@@ -129,7 +129,7 @@ fn sql_mutation(q: &str) -> Option<(Risk, &'static str)> {
     None
 }
 
-/// Programs that unambiguously mutate the host — a curated denylist (not the name
+/// Programs that unambiguously mutate the host, kept as a curated denylist (not the name
 /// classifier, to avoid flagging `git status`-style read commands).
 const DESTRUCTIVE_SHELL: &[&str] = &[
     "rm", "rmdir", "dd", "mkfs", "shred", "mv", "chmod", "chown", "truncate", "kill", "killall",

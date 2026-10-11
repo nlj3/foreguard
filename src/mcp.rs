@@ -76,7 +76,7 @@ impl SessionIdentity {
         }
     }
 
-    /// The client identity established for this session, if one has been claimed —
+    /// The client identity established for this session, if one has been claimed. It is
     /// used as the Cedar `principal` (`Agent::"…"`) when authorizing tool calls.
     pub fn current(&self) -> Option<&str> {
         self.first.as_deref()

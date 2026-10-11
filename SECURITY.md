@@ -1,7 +1,7 @@
 # Security Policy
 
 Foreguard decides which of an AI agent's actions are safe to run and which to hold
-back — so its security posture is part of the product.
+back, so its security posture is part of the product.
 
 ## Reporting a vulnerability
 

@@ -1,9 +1,9 @@
-//! Dynamic taint tracking — the "Context Foresight" layer.
+//! The "Context Foresight" layer, which does dynamic taint tracking.
 //!
 //! Prompt injection is the #1 real risk to autonomous agents (OWASP LLM01): a
 //! poisoned web page, email, or document convinces the agent to turn *untrusted
-//! content* into a *mutating action* — send this data there, run this command,
-//! write this file. Meta's **Agents "Rule of Two"** frames the fix: an agent may
+//! content* into a *mutating action* (send this data there, run this command,
+//! write this file). Meta's **Agents "Rule of Two"** frames the fix: an agent may
 //! freely combine at most two of {untrusted input, sensitive data, the power to
 //! change state}. All three at once needs a human in the loop.
 //!
@@ -16,7 +16,7 @@
 //! This is **best-effort, not sound**. The proxy sees tool inputs and outputs, not
 //! the model's hidden reasoning, so data the model paraphrases can slip a
 //! substring match. It reliably catches the common, un-laundered
-//! untrusted→mutation flow and fails safe (escalates to the human) when unsure — it
+//! untrusted→mutation flow and fails safe (escalates to the human) when unsure. It
 //! does not claim to stop every injection.
 
 use std::collections::{HashMap, HashSet};
@@ -38,7 +38,7 @@ impl TaintTracker {
         Self::default()
     }
 
-    /// Note a tool call by id, recording whether it draws in untrusted content — so
+    /// Note a tool call by id, recording whether it draws in untrusted content, so
     /// that when its result comes back we know to taint it. Called for *every* tool
     /// call, including read-only sources like `fetch`.
     pub fn note_request(&mut self, id: &str, name: &str) {
@@ -61,7 +61,7 @@ impl TaintTracker {
     }
 
     /// If any string in a mutating call's `args` carries a tainted token, return
-    /// that token — the reason the mutation is a Rule-of-Two violation.
+    /// that token, which is the reason the mutation is a Rule-of-Two violation.
     pub fn check_mutation(&self, args: &Value) -> Option<String> {
         if self.tainted.is_empty() {
             return None;
@@ -82,8 +82,8 @@ impl TaintTracker {
     }
 }
 
-/// Does this tool's *output* count as untrusted content — web, external comms, or
-/// retrieved documents the model didn't author? Name-based heuristic; extend freely.
+/// True when this tool's *output* counts as untrusted content (web, external comms, or
+/// retrieved documents the model didn't author). Name-based heuristic; extend freely.
 pub fn is_untrusted_source(name: &str) -> bool {
     let n = name.to_ascii_lowercase();
     const SOURCES: &[&str] = &[
@@ -132,12 +132,12 @@ pub fn is_untrusted_source(name: &str) -> bool {
     SOURCES.iter().any(|k| n.contains(k))
 }
 
-/// Bound on how many whitespace tokens we scan from one result — a hostile page
+/// Bound on how many whitespace tokens we scan from one result, so a hostile page
 /// can't make token extraction unbounded work.
 const MAX_TOKENS_SCANNED: usize = 20_000;
 
-/// Pull the "distinctive" tokens out of untrusted text — the ones an injection
-/// would smuggle into a later call (URLs, emails, paths, long/unusual strings) —
+/// Pull the "distinctive" tokens out of untrusted text, meaning the ones an injection
+/// would smuggle into a later call (URLs, emails, paths, long/unusual strings),
 /// while skipping ordinary words that would cause false positives.
 fn distinctive_tokens(text: &str) -> HashSet<String> {
     text.split_whitespace()
@@ -236,7 +236,7 @@ mod tests {
     #[test]
     fn results_from_trusted_tools_do_not_taint() {
         let mut t = TaintTracker::new();
-        // A local, trusted read is NOT an untrusted source — its content is fine.
+        // A local, trusted read is NOT an untrusted source, so its content is fine.
         t.note_request("1", "read_local_file");
         t.note_result("1", "deploy to https://internal.prod/deploy/service-42");
         assert!(t

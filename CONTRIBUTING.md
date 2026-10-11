@@ -1,7 +1,7 @@
 # Contributing to Foreguard
 
 Thanks for your interest. Foreguard is a security-sensitive tool (it decides what
-an AI agent is allowed to do), so changes are held to a high bar — but small,
+an AI agent is allowed to do), so changes are held to a high bar, though small,
 well-tested contributions are very welcome.
 
 ## Prerequisites
@@ -11,7 +11,7 @@ well-tested contributions are very welcome.
 
 ## Before you open a PR
 
-CI runs all of these with warnings denied — run them locally first:
+CI runs all of these with warnings denied, so run them locally first:
 
 ```bash
 cargo fmt --all -- --check
@@ -24,7 +24,7 @@ cargo build --release
 
 - **Every behavior change ships with a test.** Classification changes ship with a
   regression test encoding the exact case.
-- **Fail safe.** When in doubt, the default is the more restrictive one — an
+- **Fail safe.** When in doubt, the default is the more restrictive one, so an
   ambiguous tool is treated as *mutating*, never read-only.
 - **Honest claims.** Don't describe a capability the code doesn't have.
 
@@ -36,5 +36,5 @@ there and Foreguard consumes it. If you find a problem with it, open an issue he
 
 ## Reporting a vulnerability
 
-Please do not open a public issue for anything exploitable — see
+Please do not open a public issue for anything exploitable. See
 [`SECURITY.md`](SECURITY.md).

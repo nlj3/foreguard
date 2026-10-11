@@ -1,4 +1,4 @@
-//! `foreguard promote <ledger> -- <server…>` — replay a recorded plan for real.
+//! `foreguard promote <ledger> -- <server…>` replays a recorded plan for real.
 //!
 //! This closes the loop the ledger opened. Record a session with `--ledger` (in
 //! dry-run, so nothing executes), review the plan offline on your own time, then
@@ -58,7 +58,7 @@ fn select_calls(contents: &str, include_read_only: bool) -> Vec<Call> {
         .collect()
 }
 
-/// A one-line review string for a call: `tool — effect  [recorded: …]  ⛔ tainted…`.
+/// A one-line review string: tool, effect, recorded outcome and taint note, when present.
 fn describe_call(c: &Call) -> String {
     let effect = c
         .effect

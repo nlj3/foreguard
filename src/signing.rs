@@ -5,7 +5,7 @@
 //! `foreguard-head-v1\n{instance}\n{seq}\n{hash}` with a private key only it holds, and
 //! the control plane verifies that signature against the instance's pinned public key.
 //! A control-plane operator (or anyone who edits the database) then *cannot forge* a
-//! valid head — they don't have the key — so undetectable rewriting is off the table.
+//! valid head because they don't have the key, so undetectable rewriting is off the table.
 //! The private key never leaves the instance; only the public key and signatures do.
 
 use std::path::Path;

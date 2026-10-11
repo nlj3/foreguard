@@ -1,14 +1,14 @@
 //! # Foreguard
 //!
-//! **Preview what an AI agent is about to do — before it does it.**
+//! **Preview what an AI agent is about to do before it does it.**
 //!
 //! Foreguard is a dry-run trust layer for autonomous agents. Give it the tool
 //! calls an agent wants to make and it produces a **Mutation Plan**: which calls
-//! are read-only (safe to run) and which would *mutate* your files, APIs, or data
-//! — flagged, previewed, and **not executed**. You review the plan, then run for
-//! real when you're ready.
+//! are read-only (safe to run) and which would *mutate* your files, APIs, or data.
+//! Mutating calls are flagged, previewed, and **not executed**. You review the plan, then run
+//! for real when you're ready.
 //!
-//! The classification engine is [`kedge_core`] — the same fail-safe, deny-wins
+//! The classification engine is [`kedge_core`], which is the same fail-safe, deny-wins
 //! classifier that powers kedge's Shadow-Guard. Foreguard is the focused product
 //! extracted from that primitive.
 //!
@@ -70,10 +70,10 @@ enum Command {
     },
     /// Run as a transparent MCP dry-run proxy in front of a tool server.
     ///
-    /// Point an MCP host (Claude Code, Cursor, …) at this instead of the server:
+    /// Point an MCP host (Claude Code, Cursor and others) at this instead of the server:
     /// `foreguard proxy -- npx -y @modelcontextprotocol/server-filesystem .`
     /// Read-only tools run for real; mutating tool calls are intercepted and
-    /// previewed — nothing mutating executes.
+    /// previewed. Nothing mutating executes.
     Proxy {
         /// Promote-to-live: pause on each mutation for an interactive y/N. Approve
         /// and the *exact* call you previewed executes for real; deny (or no
@@ -81,8 +81,8 @@ enum Command {
         #[arg(long)]
         approve: bool,
         /// Context Foresight: taint the output of untrusted-source tools (web
-        /// fetches, inbox reads, …) and, when that data flows into a mutating call
-        /// — the agent "Rule of Two" violation — force human approval for that call,
+        /// fetches, inbox reads and so on) and, when that data flows into a mutating call
+        /// (the agent "Rule of Two" violation), force human approval for that call,
         /// even without `--approve`. Best-effort prompt-injection defense.
         #[arg(long)]
         taint: bool,
@@ -129,10 +129,10 @@ enum Command {
         /// Also replay read-only calls (they already ran in the original session).
         #[arg(long)]
         all: bool,
-        /// Skip the per-call confirmation — you already reviewed the ledger.
+        /// Skip the per-call confirmation because you already reviewed the ledger.
         #[arg(long)]
         yes: bool,
-        /// Print the replay plan and exit — launch nothing, execute nothing.
+        /// Print the replay plan and exit. Launch nothing, execute nothing.
         #[arg(long)]
         dry_run: bool,
         /// The MCP server command to run against, given after `--` (not needed with
@@ -145,7 +145,7 @@ enum Command {
     ///
     /// Reads model-API responses as JSON lines on stdin (Anthropic or OpenAI usage
     /// shapes), prices each against `--budget`, and the moment cumulative spend
-    /// crosses the budget it refuses every further request — the kill switch for the
+    /// crosses the budget it refuses every further request. That is the kill switch for the
     /// retry loop that would otherwise burn the budget many times over. This is the
     /// deterministic core; a live HTTP gateway is a thin front-end over it.
     Meter {
@@ -170,7 +170,7 @@ enum Command {
     /// Point an agent's `ANTHROPIC_BASE_URL` / `OPENAI_BASE_URL` at this loopback
     /// address; every model call is forwarded to `--upstream` and metered, and once
     /// cumulative spend crosses `--budget` the next request is refused before it is
-    /// sent. The caller's own auth header is passed through — Foreguard stores no keys.
+    /// sent. The caller's own auth header is passed through, and Foreguard stores no keys.
     Gateway {
         /// Upstream API base URL to forward to (e.g. `https://api.anthropic.com`).
         #[arg(long, value_name = "URL")]
@@ -428,7 +428,7 @@ fn cmd_meter(
     use std::io::BufRead;
 
     // Reject nonsense up front: a negative or non-finite budget would otherwise
-    // saturate to 0 cents and silently refuse *every* request — fail-safe, but
+    // saturate to 0 cents and silently refuse *every* request. That is fail-safe, but
     // baffling to debug.
     if let Some(d) = budget {
         if !d.is_finite() || d < 0.0 {
@@ -468,7 +468,7 @@ fn cmd_meter(
             continue;
         };
         // The model is top-level for non-streaming/OpenAI, but nested under
-        // `message` in Anthropic's streaming `message_start` — check both so a
+        // `message` in Anthropic's streaming `message_start`. Check both so a
         // streamed response isn't mispriced as the unknown-model default.
         let model_name = v
             .get("model")

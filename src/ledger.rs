@@ -4,14 +4,14 @@
 //! agent asked for, how Foreguard classified it, whether untrusted data was driving
 //! it, how policy ruled, and what actually happened (forwarded, dry-run, executed,
 //! denied, or policy-denied). The result is a replayable, greppable record of a whole
-//! agent session — the answer to "what did my agent actually try to do, and what did
-//! we let through?"
+//! agent session that shows what the agent actually tried to do and what we let
+//! through.
 //!
 //! ## Why it's tamper-evident
 //!
 //! An audit trail is only worth anything if you can tell whether it was edited after
-//! the fact. Each entry carries a small `_fg` integrity envelope —
-//! `{ seq, prev, hash }` — where `hash = SHA-256(prev ‖ seq ‖ canonical-payload)` and
+//! the fact. Each entry carries a small `_fg` integrity envelope of the form
+//! `{ seq, prev, hash }`, where `hash = SHA-256(prev ‖ seq ‖ canonical-payload)` and
 //! `prev` is the previous entry's hash. That chains the records: changing any field
 //! of any entry changes its hash, which breaks the `prev` link of *every* entry after
 //! it, so [`verify`] can pin the exact line where a log was edited, truncated, or
@@ -20,8 +20,8 @@
 //!
 //! This is **detection, not prevention**: someone with write access can still rewrite
 //! the *whole* chain from the tampered point on. Defeating that needs an external
-//! anchor — a signed head, or a Merkle root published to a transparency log — which is
-//! where the hosted control plane goes next. The hash chain is the local, offline,
+//! anchor, which can be a signed head or a Merkle root published to a transparency log.
+//! The hosted control plane is where that goes next. The hash chain is the local, offline,
 //! inspectable foundation those build on.
 
 use std::fs::{File, OpenOptions};
@@ -33,7 +33,7 @@ use serde::Serialize;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 
-/// The `prev` link of the very first entry — a fixed sentinel so genesis is
+/// The `prev` link of the very first entry. It is a fixed sentinel so genesis is
 /// unambiguous and the chain has a defined root.
 const GENESIS: &str = "genesis";
 
@@ -69,7 +69,7 @@ pub struct Ledger {
     file: File,
     /// The sequence number the next appended entry will carry.
     seq: u64,
-    /// The hash of the last entry written — the `prev` link for the next one.
+    /// The hash of the last entry written, which becomes the `prev` link for the next one.
     prev_hash: String,
 }
 
@@ -121,8 +121,8 @@ impl Ledger {
 
 /// Canonical bytes of a payload value: serialize the `Value` to a string. Both
 /// `append` (from the `Entry`) and [`verify`] (from the parsed line, minus `_fg`)
-/// route through `Value → String`, so the representation — and thus the hash — is
-/// identical on both sides.
+/// route through `Value → String`, so the representation is identical on both sides,
+/// and so is the hash.
 fn canonical(v: &Value) -> String {
     serde_json::to_string(v).unwrap_or_default()
 }
@@ -179,7 +179,7 @@ pub fn verify(path: &Path) -> std::io::Result<VerifyReport> {
     Ok(verify_str(&std::fs::read_to_string(path)?))
 }
 
-/// Verify the hash chain of ledger *contents* — the testable core of [`verify`].
+/// Verify the hash chain of ledger *contents*. This is the testable core of [`verify`].
 /// Walks the entries in order, checking that each one's `prev` links to the previous
 /// hash, its `seq` increments, and its content still hashes to the stored value.
 /// Stops at the first break and reports where and why.
@@ -225,7 +225,7 @@ pub fn verify_str(contents: &str) -> VerifyReport {
             );
         }
 
-        // Recompute the hash over the payload — everything except the `_fg` envelope.
+        // Recompute the hash over the payload, which is everything except the `_fg` envelope.
         let mut payload = v.clone();
         if let Value::Object(map) = &mut payload {
             map.remove("_fg");
@@ -421,7 +421,7 @@ mod tests {
             l.append(&sample(1, "a", &json!({})));
         }
         {
-            // Reopen and append more — must continue the same chain, not restart.
+            // Reopen and append more. The chain must continue, not restart.
             let mut l = Ledger::open(&path).unwrap();
             l.append(&sample(2, "b", &json!({})));
             l.append(&sample(3, "c", &json!({})));

@@ -1,18 +1,18 @@
-//! The **Cedar policy engine** — Foreguard's authorization layer.
+//! The **Cedar policy engine** is Foreguard's authorization layer.
 //!
-//! The classifier answers *"is this call a mutation?"* Policy answers the next
-//! question: *"is this call **allowed**?"* — the business-action-level rule that an
-//! identity layer ("this agent may call the Stripe API") is too coarse to express:
+//! The classifier decides whether a call is a mutation. Policy decides whether the
+//! call is **allowed**. That covers business-action-level rules that an identity
+//! layer ("this agent may call the Stripe API") is too coarse to express:
 //! *refunds ≤ $50 run, refunds to new accounts never run, and no session may make
 //! more than N tool calls.*
 //!
 //! We use [Cedar](https://www.cedarpolicy.com/) rather than inventing a DSL. AWS
 //! built Cedar to authorize agent tool calls (Bedrock AgentCore) and donated it to
-//! the CNCF, so it is becoming the standard; and its semantics — default-deny,
-//! **forbid overrides permit**, order-independent, deterministic, no side effects —
-//! are exactly Foreguard's fail-safe, deny-wins ethos. Speaking Cedar makes
-//! Foreguard interoperable with where the market is heading while staying the open,
-//! local, framework-neutral enforcement point.
+//! the CNCF. Its semantics (default-deny, **forbid overrides permit**,
+//! order-independent, deterministic, no side effects) match Foreguard's
+//! fail-safe, deny-wins ethos. Speaking Cedar keeps Foreguard interoperable with
+//! other Cedar tooling while it stays the open, local, framework-neutral
+//! enforcement point.
 //!
 //! ## How a Cedar decision maps to a Foreguard action
 //!
@@ -21,16 +21,16 @@
 //!
 //! | Cedar result                         | [`PolicyDecision`] | What the proxy does                     |
 //! |--------------------------------------|--------------------|-----------------------------------------|
-//! | `Allow` (a `permit` matched)         | `Authorized`       | pre-authorized — execute for real       |
-//! | `Deny`, a `forbid` satisfied         | `Blocked`          | hard block — never runs, even with `--approve` |
+//! | `Allow` (a `permit` matched)         | `Authorized`       | pre-authorized, executes for real       |
+//! | `Deny`, a `forbid` satisfied         | `Blocked`          | hard block that never runs, even with `--approve` |
 //! | `Deny`, nothing matched              | `Unset`            | defer to Foreguard's existing behavior  |
 //!
 //! One safety override on that table: if *any* policy **errors** while evaluating
 //! (e.g. a `forbid` that references an attribute this call lacks), an `Allow` is
-//! downgraded to `Unset` rather than `Authorized` — a silently-broken `forbid` must
+//! downgraded to `Unset` rather than `Authorized`, because a silently-broken `forbid` must
 //! never fail open into auto-executing a real mutation.
 //!
-//! `Unset` — not Cedar's strict default-deny — is deliberate: with no policy opinion
+//! Using `Unset` rather than Cedar's strict default-deny is deliberate: with no policy opinion
 //! we fall back to Foreguard's already-safe default (dry-run), so adding a policy
 //! file can only ever make a call *more* restricted (a new `forbid`) or lift the
 //! babysitting on a *known-safe* one (an explicit `permit`). It never loosens the
@@ -50,11 +50,11 @@ use serde_json::{json, Map, Value};
 /// What policy says should happen to one tool call. See the module table.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PolicyDecision {
-    /// A `forbid` matched — hard block. Never executes, even under `--approve`.
+    /// A `forbid` matched, so the call is blocked. It never executes, even under `--approve`.
     Blocked,
-    /// A `permit` matched — the call is pre-authorized to run for real.
+    /// A `permit` matched, so the call is pre-authorized to run for real.
     Authorized,
-    /// No policy matched — defer to Foreguard's existing (safe) behavior.
+    /// No policy matched, so Foreguard's existing (safe) behavior applies.
     Unset,
 }
 
@@ -65,20 +65,20 @@ pub struct CallContext<'a> {
     pub agent: &'a str,
     /// The tool being invoked (the resource, `Tool::"…"`, and `context.tool`).
     pub tool: &'a str,
-    /// `context.mutating` — did the classifier judge this a mutation?
+    /// `context.mutating` is true when the classifier judged this call a mutation.
     pub mutating: bool,
-    /// `context.risk` — `"high"`, `"medium"`, or `"none"` for a read.
+    /// `context.risk` is `"high"`, `"medium"`, or `"none"` for a read.
     pub risk: Option<&'a str>,
-    /// `context.tainted` — is untrusted data driving this call (Rule-of-Two)?
+    /// `context.tainted` is true when untrusted data is driving this call (Rule-of-Two).
     pub tainted: bool,
-    /// `context.session_calls` — tool calls seen this session (runaway-loop guard).
+    /// `context.session_calls` counts the tool calls seen this session (runaway-loop guard).
     pub session_calls: i64,
-    /// `context.session_cost` — estimated spend so far, in cents (0 until the LLM
+    /// `context.session_cost` is the estimated spend so far, in cents (0 until the LLM
     /// proxy surface lands; wired now so policies can be written against it).
     pub session_cost: i64,
-    /// The call's top-level arguments, exposed two ways: `context.args.*` (typed —
+    /// The call's top-level arguments, exposed two ways: `context.args.*` (typed, with
     /// integers as `Long`, so `<= 50` works) and `context.dec.*` (every number as a
-    /// Cedar `decimal`, for fractional money — `.lessThanOrEqual(decimal("50.00"))`).
+    /// Cedar `decimal`, for fractional money, e.g. `.lessThanOrEqual(decimal("50.00"))`).
     pub arguments: &'a Value,
 }
 
@@ -142,8 +142,8 @@ impl PolicyEngine {
         // A policy that *errors* at evaluation (e.g. a `forbid` that references an
         // attribute this call doesn't have) is silently skipped by Cedar and does
         // not contribute to the decision. That is a fail-*open* footgun here,
-        // because a satisfied `permit` would then AUTHORIZE a real mutation — the
-        // author's `forbid` having quietly not applied. So: if any policy errored,
+        // because a satisfied `permit` would then AUTHORIZE a real mutation while the
+        // author's `forbid` quietly did not apply. So: if any policy errored,
         // never authorize. A satisfied `forbid` still blocks; everything else
         // downgrades to `Unset` and falls back to Foreguard's safe gate (dry-run /
         // approval), where the human still sees it.
@@ -158,13 +158,13 @@ impl PolicyEngine {
         }
 
         Ok(match response.decision() {
-            // A `permit` was satisfied and no `forbid` overrode it — but only trust
+            // A `permit` was satisfied and no `forbid` overrode it, but only trust
             // it when the whole policy set evaluated cleanly.
             Decision::Allow if !had_errors => PolicyDecision::Authorized,
             Decision::Allow => PolicyDecision::Unset,
             Decision::Deny => {
                 // `reason()` lists the policies that *forced* this decision. On a
-                // Deny those are satisfied `forbid`s — if there are none, nothing
+                // Deny those are satisfied `forbid`s, and if there are none, nothing
                 // matched at all (Cedar's implicit default-deny), which for us means
                 // "no opinion", not "blocked".
                 if response.diagnostics().reason().next().is_some() {
@@ -222,9 +222,9 @@ fn sanitize_args(args: &Value) -> Value {
 }
 
 /// Build the companion `context.dec` record: every numeric argument as a Cedar
-/// **decimal** extension value, so a money rule can compare cents uniformly —
-/// `context.dec.amount.lessThanOrEqual(decimal("50.00"))` holds for `30`, `30.0`,
-/// and `49.99` alike. Integers live in `context.args` too (as `Long`), but only
+/// **decimal** extension value, so a money rule can compare cents uniformly.
+/// For example, `context.dec.amount.lessThanOrEqual(decimal("50.00"))` holds for `30`,
+/// `30.0`, and `49.99` alike. Integers live in `context.args` too (as `Long`), but only
 /// `context.dec` gives fractional money a working numeric comparison. Numbers that
 /// don't fit Cedar's decimal range are omitted, so a rule referencing one errors and
 /// falls closed rather than poisoning the whole context.
@@ -312,7 +312,7 @@ mod tests {
 
     #[test]
     fn forbid_wins_over_permit() {
-        // Refunds up to $50 are fine — but never to a brand-new account, even under $50.
+        // Refunds up to $50 are fine, but never to a brand-new account, even under $50.
         let eng = PolicyEngine::parse(
             r#"
             permit(principal, action, resource)
@@ -390,7 +390,7 @@ mod tests {
             eng.evaluate(&call("issue_refund", true, &json!({"amount": 30}))),
             PolicyDecision::Authorized
         );
-        // Fractional amount under the limit — the case that used to fail — authorized.
+        // A fractional amount under the limit is authorized (this case used to fail).
         assert_eq!(
             eng.evaluate(&call("issue_refund", true, &json!({"amount": 49.99}))),
             PolicyDecision::Authorized
@@ -430,7 +430,7 @@ mod tests {
     fn an_erroring_policy_never_authorizes_a_mutation() {
         // The permit matches; the forbid errors because the call has no `blocked`
         // attribute. A silently-erroring forbid must NOT fail open into
-        // auto-execution — the decision downgrades to Unset (fall back to the gate),
+        // auto-execution. The decision downgrades to Unset (fall back to the gate),
         // never Authorized.
         let eng = PolicyEngine::parse(
             r#"

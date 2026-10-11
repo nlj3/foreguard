@@ -1,20 +1,20 @@
-//! **Spend metering + budget enforcement** — the LLM-cost kill switch.
+//! **Spend metering + budget enforcement** is the LLM-cost kill switch.
 //!
 //! Foreguard's proxy governs *actions* (what a tool call would do). This module
 //! governs *spend* (what the model itself costs). They're different surfaces: token
 //! spend happens on the agent→model-API path, not the MCP tool-call path, so this is
-//! a sibling interception point, not a patch to the proxy — but it shares Foreguard's
+//! a sibling interception point rather than a patch to the proxy. It shares Foreguard's
 //! philosophy: **deterministic, fail-safe, and enforcement over alerts.**
 //!
 //! Why enforcement and not alerting: an agent in a retry loop can burn *multiples* of
 //! a budget in the time it takes a human to read an alert (a real 4-agent loop is on
-//! record burning ~$47k over 11 days). So the meter doesn't warn — it **refuses**.
+//! record burning ~$47k over 11 days). So the meter **refuses** rather than warns.
 //! Because a request's cost isn't known until the response comes back, the kill
 //! switch is a pre-flight check on *cumulative* spend: the moment total spend crosses
 //! the budget, every further request is blocked.
 //!
-//! The core here is pure and deterministic — parse usage, price it, accumulate,
-//! decide — which is where the real IP lives. A live HTTP gateway that points
+//! The core here is pure and deterministic. It parses usage, prices it, accumulates,
+//! and decides. A live HTTP gateway that points
 //! `ANTHROPIC_BASE_URL`/`OPENAI_BASE_URL` at Foreguard is a thin front-end over this.
 
 use std::collections::HashMap;
@@ -36,11 +36,11 @@ impl Usage {
     ///
     /// Two subtleties, both in the direction of **not under-counting** a budget:
     /// - Anthropic's streaming `message_start` nests usage under `message.usage`
-    ///   rather than at the top level — where the (often dominant) input-token count
-    ///   lives — so we look there too. Missing it would silently drop input cost.
+    ///   rather than at the top level (where the often dominant input-token count
+    ///   lives), so we look there too. Missing it would silently drop input cost.
     /// - Cache tokens (`cache_creation_input_tokens` / `cache_read_input_tokens`)
     ///   are billed input; we fold them into `input_tokens` at the input rate. Cache
-    ///   *reads* are actually cheaper, so this is a conservative over-estimate — the
+    ///   *reads* are actually cheaper, so this is a conservative over-estimate, which is the
     ///   safe direction for a kill switch (it trips a touch early, never late).
     pub fn from_response(v: &Value) -> Option<Usage> {
         // Top level for non-streaming and OpenAI; nested under `message` for
@@ -70,7 +70,7 @@ fn field(obj: &Value, keys: &[&str]) -> Option<u64> {
 }
 
 /// Price for one model, in **cents per million tokens** (integers keep the math
-/// exact and deterministic — no floats in the accounting path).
+/// exact and deterministic, with no floats in the accounting path).
 #[derive(Debug, Clone, Copy)]
 pub struct Price {
     pub input_per_mtok_cents: u64,
@@ -117,7 +117,7 @@ impl PriceTable {
         if let Some(p) = self.exact.get(&m) {
             return *p;
         }
-        // (family substring, input cents/Mtok, output cents/Mtok) — illustrative.
+        // Illustrative prices as (family substring, input cents/Mtok, output cents/Mtok).
         const FAMILIES: &[(&str, u64, u64)] = &[
             ("opus", 1500, 7500),
             ("sonnet", 300, 1500),
@@ -156,7 +156,7 @@ impl PriceTable {
 pub enum Charge {
     /// The request was within budget; here is its cost and the new running total.
     Ok { cost_cents: u64, spent_cents: u64 },
-    /// Cumulative spend has crossed the budget — this and every later request is
+    /// Cumulative spend has crossed the budget, so this and every later request is
     /// refused. Carries the total and the budget it exceeded.
     Blocked { spent_cents: u64, budget_cents: u64 },
 }
@@ -265,7 +265,7 @@ mod tests {
 
     #[test]
     fn finds_nested_usage_and_folds_in_cache_tokens() {
-        // Anthropic streaming `message_start` nests usage under `message` — the
+        // Anthropic streaming `message_start` nests usage under `message`, and the
         // input count must not be dropped.
         let start = json!({
             "type":"message_start",
@@ -351,7 +351,7 @@ mod tests {
             input_tokens: 0,
             output_tokens: 100_000,
         };
-        // Calls 1..=3 spend 150/300/450 — all under 500, all allowed.
+        // Calls 1..=3 spend 150/300/450, all under 500, so all are allowed.
         for expected in [150u64, 300, 450] {
             assert!(m.allow_request());
             assert_eq!(
@@ -362,7 +362,7 @@ mod tests {
                 }
             );
         }
-        // Call 4 takes us to 600 ≥ 500 — recorded, but the kill switch trips.
+        // Call 4 takes us to 600 ≥ 500. It is recorded, but the kill switch trips.
         assert!(m.allow_request(), "still allowed just before crossing");
         assert!(matches!(
             m.charge("claude-sonnet-5", &per_call),
@@ -373,7 +373,7 @@ mod tests {
         ));
         assert!(m.is_blocked(), "crossing the budget trips the switch");
 
-        // Every further request is refused pre-flight — the runaway is stopped.
+        // Every further request is refused pre-flight, which stops the runaway.
         assert!(!m.allow_request());
         assert_eq!(
             m.charge("claude-sonnet-5", &per_call),

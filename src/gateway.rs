@@ -1,23 +1,23 @@
-//! The **live LLM spend gateway** — the front-end that makes [`crate::spend`] real.
+//! The **live LLM spend gateway** is the front-end that makes [`crate::spend`] real.
 //!
 //! `foreguard meter` proves the enforcement logic offline over a stream of recorded
 //! responses. This turns that same core into a **transparent HTTP proxy**: point an
 //! agent's `ANTHROPIC_BASE_URL` / `OPENAI_BASE_URL` at Foreguard instead of the real
 //! API, and every model call flows through the budget kill switch. Once cumulative
 //! spend crosses the budget, the gateway **refuses the next request before it is even
-//! sent upstream** — the retry loop is stopped, not merely alerted on.
+//! sent upstream**, so the retry loop is stopped, not merely alerted on.
 //!
 //! Design, matching Foreguard's ethos:
 //! - **Loopback only.** The gateway binds `127.0.0.1`; it is a local sidecar, not a
 //!   shared service.
 //! - **It never handles credentials.** The caller's own `Authorization` / `x-api-key`
-//!   header is passed straight through to the upstream — Foreguard stores no keys.
+//!   header is passed straight through to the upstream, and Foreguard stores no keys.
 //! - **Fail-safe.** A budget that is already crossed refuses pre-flight; an upstream
 //!   error surfaces as `502`; nothing about metering can make a call cost *less* than
 //!   it did.
 //!
 //! The forwarding is abstracted behind [`Forwarder`] so the enforcement/metering loop
-//! is testable with an in-memory upstream — [`ReqwestForwarder`] is the production one.
+//! is testable with an in-memory upstream, and [`ReqwestForwarder`] is the production one.
 //!
 //! Current limitation, stated honestly: responses are **buffered**, not streamed
 //! token-by-token. Usage is read from the whole response (non-streaming JSON, or a
@@ -37,7 +37,7 @@ use crate::spend::{PriceTable, SpendMeter, Usage};
 /// Cap on a request body we'll buffer, so a hostile `Content-Length` can't OOM us.
 const MAX_BODY: usize = 64 * 1024 * 1024;
 
-/// A parsed inbound HTTP request — enough of one to forward upstream.
+/// A parsed inbound HTTP request, reduced to what is needed to forward it upstream.
 #[derive(Debug, Clone)]
 pub struct HttpRequest {
     pub method: String,
@@ -166,7 +166,7 @@ impl GatewayCore {
     }
 }
 
-/// Extract `(model, usage)` from a response body — non-streaming JSON first, then a
+/// Extract `(model, usage)` from a response body. Non-streaming JSON is tried first, then a
 /// best-effort scan of a buffered SSE stream (summing `message_start` input with the
 /// final `message_delta`/usage-chunk output). Returns `usage = None` when nothing
 /// meterable is present, so an odd body is charged nothing rather than mis-charged.

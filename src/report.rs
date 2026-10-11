@@ -1,4 +1,4 @@
-//! **Loop closers** — the wires between a local Foreguard instance and the control
+//! **Loop closers** are the wires between a local Foreguard instance and the control
 //! plane ([`crate::gateway`] governs spend; this reports to and pulls from the fleet).
 //!
 //! - [`run_report`] ships the local audit ledger's *new* entries to the control
@@ -7,7 +7,7 @@
 //! - [`fetch_policy_source`] pulls the central Cedar policy from a URL so a fleet of
 //!   proxies enforces one policy pushed from one place.
 //!
-//! The ingest/admin token is never a CLI argument — it comes from the
+//! The ingest/admin token is never a CLI argument. It comes from the
 //! `FOREGUARD_INGEST_TOKEN` environment variable, so it can't leak into a process
 //! list or shell history.
 
@@ -15,7 +15,7 @@ use anyhow::{bail, Context, Result};
 use serde_json::{json, Value};
 
 /// From a ledger's contents, the entries whose `_fg.seq` is greater than
-/// `after_seq` — the ones the control plane hasn't accepted yet. Order preserved.
+/// `after_seq`, which are the ones the control plane hasn't accepted yet. Order preserved.
 pub fn select_new_entries(ledger_contents: &str, after_seq: i64) -> Vec<Value> {
     ledger_contents
         .lines()
@@ -31,7 +31,7 @@ pub fn select_new_entries(ledger_contents: &str, after_seq: i64) -> Vec<Value> {
         .collect()
 }
 
-/// The ledger's current head — the last entry's `(seq, hash)` — to attest.
+/// The ledger's current head to attest, which is the last entry's `(seq, hash)`.
 pub fn ledger_head(contents: &str) -> Option<(i64, String)> {
     let last = contents.lines().rev().find(|l| !l.trim().is_empty())?;
     let v: Value = serde_json::from_str(last).ok()?;

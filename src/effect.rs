@@ -1,4 +1,4 @@
-//! Describe the *effect* of a mutating call — the difference between "it mutates"
+//! Describe the *effect* of a mutating call, which is the difference between "it mutates"
 //! and "it deletes /etc/passwd".
 //!
 //! Given a mutating tool's name and arguments, produce a concise, human-readable
