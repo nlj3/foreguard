@@ -74,7 +74,7 @@ struct Preview {
 /// mutating `tools/call` is `Passthrough`.
 fn inspect(line: &str, ann: Option<Ann>, classify_as: Option<&str>) -> Inspection {
     let Ok(msg) = serde_json::from_str::<Value>(line) else {
-        return Inspection::Passthrough; // not JSON we understand — stay transparent
+        return Inspection::Passthrough; // not JSON we understand, so stay transparent
     };
     if msg.get("method").and_then(Value::as_str) != Some("tools/call") {
         return Inspection::Passthrough;
