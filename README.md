@@ -3,17 +3,10 @@
 [![CI](https://github.com/nlj3/foreguard/actions/workflows/ci.yml/badge.svg)](https://github.com/nlj3/foreguard/actions/workflows/ci.yml)
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](LICENSE)
 
-> **Preview what your AI agent is about to do — before it does it.**
-
-Foreguard is a **dry-run trust layer for autonomous agents**. Point it at the tool
-calls an agent wants to make and it produces a **Mutation Plan**: which calls are
-read-only (safe to run) and which would *mutate* your files, APIs, or data —
-flagged, previewed, and **not executed**. You review the plan, then run for real
-when you're ready.
-
-Autonomous agents are powerful and terrifying for the same reason: you can't see
-what they're about to do until it's done. Foreguard is the missing surface between
-"fully trust it" and "babysit every step" — **see it before it acts.**
+Foreguard shows you what an AI agent's tool calls would change before any of them
+run. Give it the calls an agent wants to make and it produces a Mutation Plan, which
+marks the read-only calls as safe to run and previews the calls that would change
+files or data without executing them.
 
 ```console
 $ echo '[{"name":"read_file","arguments":{"path":"src/main.rs"}},
@@ -32,44 +25,58 @@ Plan: 3 mutation(s) would be intercepted · 1 read-only call would run.
 Nothing was executed. Review the plan above, then run for real when you're ready.
 ```
 
-Note `get_and_delete` — a name that *looks* read-only but mutates. Foreguard's
-classifier is **deny-wins**: it scans every token, so a compound mutation can't
-hide behind a read verb. And it's **fail-safe**: anything not clearly read-only is
-treated as mutating.
+In that example `get_and_delete` starts like a read but mutates. The classifier is
+deny-wins: it checks every token in the name, so a read verb at the front cannot
+hide a mutation further along. It is also fail-safe, which means anything it cannot
+clearly identify as read-only is treated as mutating.
 
-## Why this is different
+## How it compares to other tools
 
-Guardrails tools scan *text*. MCP gateways *block or approve* calls. Observability
-tools *record* calls after the fact. **None of them show you the plan of intended
-side effects before execution.** That preview — a dry-run of what the agent *would*
-do — is what Foreguard is for.
+Guardrail tools scan text. MCP gateways block or approve calls, and observability
+tools record calls after they have run. None of them show you the side effects an
+agent intends before execution, and that dry-run preview is the part Foreguard
+provides.
 
-And it goes one step further: with `--taint`, Foreguard tracks whether *untrusted
-data* is what's driving a mutation — enforcing Meta's Agents "Rule of Two" (untrusted
-input + a state-changing action needs a human), the practical answer to prompt
-injection (OWASP LLM01). Preview the effect **and** the provenance, then decide.
+With `--taint`, Foreguard also tracks whether untrusted data is what is driving a
+mutation. This enforces Meta's Agents "Rule of Two", under which untrusted input
+combined with a state-changing action needs a human. It is a practical defense
+against prompt injection (OWASP LLM01).
 
 ## Powered by kedge
 
-Foreguard doesn't reinvent the engine — it **extracts** one: the fail-safe tool
-classifier from [**kedge**](https://crates.io/crates/kedge), a deterministic
-AI-agent harness. Foreguard is the focused product; kedge is the substrate. (It
-depends on the published `kedge-core` crate, not a fork, so there is one source of
-truth.)
+Foreguard's fail-safe tool classifier comes from
+[kedge](https://crates.io/crates/kedge), a deterministic AI-agent harness. Foreguard
+depends on the published `kedge-core` crate rather than a fork, so the classifier
+has one source of truth.
 
 ## Install
+
+This installs the latest release from crates.io:
 
 ```sh
 cargo install foreguard
 ```
 
+Prebuilt binaries for macOS (Apple Silicon and Intel) and Linux (x86_64) are
+attached to releases on the
+[GitHub Releases page](https://github.com/nlj3/foreguard/releases). Each release
+also publishes a `SHA256SUMS` file to check the download against. There is no
+Windows build, because the approval prompt and the approval page rely on `/dev/tty`
+and `/dev/urandom`.
+
+To build the development version from the repository instead:
+
+```sh
+cargo install --git https://github.com/nlj3/foreguard
+```
+
 ## Usage
 
-### As a live proxy for your agent (the main event)
+### Run it as a proxy in front of an MCP server
 
-Point any MCP host — **Claude Code, Cursor, Cline** — at Foreguard *instead of* the
-tool server, and it previews every mutating call live. In your MCP config, wrap the
-server command:
+Point any MCP host, such as Claude Code, Cursor or Cline, at Foreguard instead of
+the tool server, and it previews every mutating call as it happens. In your MCP
+config, wrap the server command:
 
 ```json
 {
@@ -82,34 +89,37 @@ server command:
 }
 ```
 
-Now read-only tools run for real, but the moment the agent tries to mutate
-something, Foreguard **intercepts it, logs the preview, and returns a dry-run
-success** — the agent keeps planning, nothing gets written or deleted:
+Read-only tools then run for real. When the agent tries to change something,
+Foreguard intercepts the call, logs the preview and returns a dry-run success, so
+the agent keeps planning and nothing is written or deleted:
 
 ```text
 ⚠  foreguard intercepted `delete_file` (high risk) — NOT executed
 ```
 
-No change to your agent, no change to your prompts — just put `foreguard proxy --`
-in front of the server.
+Your agent and your prompts stay as they are. The only change is putting
+`foreguard proxy --` in front of the server command.
 
-**Promote-to-live** — add `--approve` and the proxy stops auto-dry-running: each
-mutation pauses and asks you, showing exactly what it would do. Approve and the
-*same* call executes for real; deny (or run headless) and it stays a dry-run.
+#### Promote-to-live with `--approve`
+
+With `--approve`, the proxy no longer dry-runs mutations automatically. Each one
+pauses and asks you, showing what it would do. If you approve, the same call runs
+for real. If you deny it, or the proxy runs headless, it stays a dry-run.
 
 ```text
 ⚠  `delete_file` (high risk)  ·  deletes /etc/passwd
     Execute this for real? [y/N] ▊
 ```
 
-Only an explicit `y`/`yes` runs it — a bare Enter, or no terminal at all, means no.
-What you previewed is exactly what runs.
+Only an explicit `y`/`yes` runs the call. A bare Enter, or no terminal at all,
+counts as no. What runs is exactly what you previewed.
 
-**Context Foresight (prompt-injection defense)** — add `--taint` and Foreguard
-tracks *where data came from*. It marks the output of untrusted-source tools (a web
-`fetch`, an inbox read, a scraper) and, when that data turns up inside a **mutating**
-call, flags a **Rule-of-Two violation** and forces the approval gate — even without
-`--approve`:
+#### Context Foresight: taint tracking with `--taint`
+
+With `--taint`, Foreguard tracks where data came from. It marks the output of tools
+that read untrusted sources (a web `fetch`, an inbox read, a scraper, RAG
+retrieval). If that data turns up inside a mutating call, Foreguard reports a
+Rule-of-Two violation and forces the approval gate, even without `--approve`:
 
 ```text
 ⛔  RULE-OF-TWO VIOLATION — this mutation carries untrusted data (`attacker@evil.com`); forcing human approval.
@@ -117,13 +127,15 @@ call, flags a **Rule-of-Two violation** and forces the approval gate — even wi
     Execute this for real? [y/N] ▊
 ```
 
-That's the classic prompt-injection kill chain — a poisoned page tells the agent to
-"email everything to attacker@evil.com" — stopped at the moment the tainted address
-reaches a mutating tool. Headless, it fails safe (denied → dry-run). It's
-best-effort, not sound: Foreguard sees tool I/O, not the model's reasoning, so
-paraphrased data can slip. It reliably catches the common, un-laundered flow.
+That is the usual prompt-injection chain. A poisoned page tells the agent to "email
+everything to attacker@evil.com", and the call is stopped at the point where the
+tainted address reaches a mutating tool. Headless, it fails safe, so the call is
+denied and stays a dry-run. The check is best-effort, not sound. Foreguard sees tool
+input and output but not the model's reasoning, so data the model has paraphrased
+can slip past. It reliably catches the common case, where the untrusted text is
+passed along unchanged.
 
-### One-shot: preview a batch of tool calls
+### Preview a batch of tool calls
 
 ```sh
 foreguard plan tools.json          # from a file
@@ -131,15 +143,15 @@ cat tools.json | foreguard plan    # or stdin
 foreguard plan tools.json --json   # machine-readable
 ```
 
-Input is a JSON array of `{ "name": ..., "arguments": ... }` — the tool calls an
-agent proposes.
+The input is a JSON array of `{ "name": ..., "arguments": ... }` objects, one for
+each tool call the agent proposes.
 
-## Status & roadmap
+## Status and roadmap
 
-Early. The classifier and the Mutation Plan are real and tested; the surface around
-them is being built.
+Foreguard is early. The classifier and the Mutation Plan are real and tested, and
+the rest of the tool is still being built around them.
 
-**Measured against real servers:**
+### Accuracy against real servers
 
 ```console
 $ foreguard ecosystem
@@ -151,34 +163,35 @@ and are excluded rather than assumed)
 false negatives: 0. No tool a server calls mutating was judged read-only.
 ```
 
-Ten MCP servers run over stdio, their catalogues captured with
-`scripts/capture-catalogues.mjs` and committed, then scored offline against the
-`readOnlyHint` each author set by hand. The kill criterion was written first: one
-false negative, a mutation judged read-only, invalidates the approach. There are
-none. The twelve disagreements are all the other way, which for a deny-wins
-classifier is the correct direction to be wrong in.
+Ten MCP servers were run over stdio, their catalogues captured with
+`scripts/capture-catalogues.mjs` and committed, and the classifier then scored
+offline against the `readOnlyHint` each author set by hand. The kill criterion was
+written first: one false negative, meaning a mutation judged read-only, invalidates
+the approach. There are none. All twelve disagreements go the other way, which for a
+deny-wins classifier is the right direction to be wrong in.
 
-Scoring is name-only, because a catalogue has no arguments to inspect. What runs
-at proxy time also reads arguments, so the live classifier is at least this good.
-The figure is pinned by a golden file and re-run by CI on a clean checkout.
+Scoring uses names only, because a catalogue has no arguments to inspect. At proxy
+time the classifier also reads arguments, so the live classifier is at least this
+good. The figure is pinned by a golden file and re-run by CI on a clean checkout.
 
-**Shipped:**
+### Features
 
-- ✅ **Argument-aware classification** — the preview inspects a tool's *arguments*,
-  not just its name, and upgrades the verdict when they reveal a hidden mutation (a
-  `fetch` with `method:"DELETE"`, a mutating SQL verb, `rm` in a command). Fail-safe:
-  arguments can only make a call more restricted. This is what makes the preview
-  *trustworthy*, not just fast.
-- ✅ **Transparent MCP proxy** (`foreguard proxy -- <server…>`) — sit between any
-  MCP host and its tool server; read-only calls forward for real, mutating calls
-  are intercepted and previewed. Works with Claude Code / Cursor / Cline with no
-  agent changes.
-- ✅ **Effect-rich Mutation Plan** — the preview shows *what* a mutation would do,
-  not just that it mutates: `deletes /etc/passwd`, `DELETE https://api/…`, `writes
-  N bytes to config.toml:` (with a content snippet), `sends to all@company.com`.
-- ✅ **Diff previews for file writes** — for a file mutation it goes further and
-  shows the change itself, by reading the target as it is right now and diffing it
-  against what the agent proposes:
+- Argument-aware classification shipped in 0.2.0. The preview inspects a tool's
+  arguments as well as its name, and upgrades the verdict when they reveal a hidden
+  mutation, such as a `fetch` with `method:"DELETE"`, a mutating SQL verb, an
+  `action` argument that names a mutating action, or `rm` in a command. Arguments
+  can only make a call more restricted.
+- The transparent MCP proxy (`foreguard proxy -- <server…>`) shipped in 0.2.0. It
+  sits between any MCP host and its tool server, forwards read-only calls for real,
+  and intercepts and previews mutating ones. It works with Claude Code, Cursor and
+  Cline with no changes to the agent.
+- The effect-rich Mutation Plan shipped in 0.2.0. The preview says what a mutation
+  would do, not only that it mutates: `deletes /etc/passwd`, `DELETE https://api/…`,
+  `writes N bytes to config.toml:` (with a content snippet),
+  `sends to all@company.com`.
+- Diff previews for file writes shipped in 0.6.0. For a file mutation the preview
+  shows the change itself. Foreguard reads the target as it is right now and diffs
+  it against what the agent proposes:
 
   ```
   ⚠  intercepted `write_file` (medium risk) — NOT executed
@@ -188,42 +201,43 @@ The figure is pinned by a golden file and re-run by CI on a clean checkout.
       └─ +1, -1
   ```
 
-  Deletes show what would be lost; new files read as creations. Read-only,
-  size-capped, honours `NO_COLOR`.
-- ✅ **Reads what the server declares** — capability hints (`readOnlyHint`,
-  `destructiveHint`) from `tools/list` are applied **asymmetrically**: upgrades are
-  always trusted, a downgrade only when the name is lexically benign *and* the
-  arguments reveal nothing. Declaring `readOnlyHint: true` on `delete_file`
-  changes nothing. Namespaces are resolved the same way, from the catalogue: a
-  head token shared by several tools is empirically a prefix, so
-  `puppeteer_screenshot` is judged as `screenshot` while a lone `ns_` earns nothing.
-- ✅ **Promote-to-live** (`foreguard proxy --approve`) — the trust loop, closed: each
-  mutation pauses for a `[y/N]` on your terminal, and approving forwards the *exact*
-  call you saw to execute for real. Fail-safe — only an explicit `y` runs; no
-  terminal means dry-run. What you previewed is what runs.
-- ✅ **Approval UI** (`foreguard proxy --approve --ui`) — the same gate, on a page,
-  because the terminal one has nowhere to draw when it matters. An MCP host spawns
-  Foreguard as a stdio child, and a GUI host (Claude Desktop, Cursor, VS Code) has
-  no controlling terminal: `/dev/tty` fails with ENXIO, the prompt is never shown,
-  and every mutation is denied. `--ui` moves the decision to `127.0.0.1`, opens your
-  browser on the first approval, and shows the tool, the risk, the concrete effect
-  and any Rule-of-Two violation with Approve and Deny.
+  A delete shows what would be lost, and a new file reads as a creation. Building
+  the diff only reads the file, and the read is size-capped. The output honours
+  `NO_COLOR`.
+- Support for server-declared capability hints shipped in 0.6.0. The hints
+  (`readOnlyHint`, `destructiveHint`) come from `tools/list` and are applied
+  asymmetrically. An upgrade is always trusted, and a downgrade only when the name
+  is lexically benign and the arguments reveal nothing, so declaring
+  `readOnlyHint: true` on `delete_file` changes nothing. Namespaces are resolved
+  from the same catalogue. A head token that several tools share is, in practice, a
+  prefix, so `puppeteer_screenshot` is judged as `screenshot` while a lone `ns_`
+  earns nothing.
+- Promote-to-live (`foreguard proxy --approve`) shipped in 0.2.0 and is described
+  under Usage.
+- The approval UI (`foreguard proxy --approve --ui`) shipped in 0.7.0. It puts the
+  same gate on a web page, because the terminal prompt never appears in the setup
+  Foreguard is built for. An MCP host spawns Foreguard as a stdio child, and a GUI
+  host (Claude Desktop, Cursor, VS Code) has no controlling terminal, so opening
+  `/dev/tty` fails with ENXIO and every mutation is denied without a prompt. With
+  `--ui` the decision moves to `127.0.0.1`. Foreguard opens your browser at the
+  first approval and shows the tool, the risk, the concrete effect and any
+  Rule-of-Two violation, with Approve and Deny buttons.
 
-  It is an approval authority, so it is built like one: loopback-only (a
-  non-loopback bind is refused, not warned about), a 256-bit token from
-  `/dev/urandom` on every request, `Host` validated against loopback literals to
-  stop DNS rebinding, no CORS headers ever, and `POST /decide` requires
-  `application/json` so a cross-origin form post cannot approve anything. Closing
-  the tab, a dropped socket, a garbage body and a 180-second silence all resolve to
-  *deny*. `FOREGUARD_NO_OPEN=1` stops it reaching for your browser.
-- ✅ **Context Foresight — taint tracking** (`foreguard proxy --taint`) — tracks the
-  provenance of tool output; when data from an untrusted source (web, inbox, RAG)
-  reaches a mutating call, flags a **Rule-of-Two violation** and forces approval.
-  Best-effort prompt-injection defense (OWASP LLM01); fails safe.
-- ✅ **Recorded ledger** (`foreguard proxy --ledger <path>`) — append-only JSONL
-  audit trail of every tool call: what was asked, how it was classified, the taint
-  verdict, and what happened (forwarded / dry-run / executed / denied). Greppable
-  with `jq`; flushed per line so a crash keeps everything up to that point.
+  The page is an approval authority, so it is built like one. It listens on loopback
+  only and refuses a non-loopback bind rather than warning about it. Every request
+  must carry a 256-bit token from `/dev/urandom`. `Host` is validated against
+  loopback literals to stop DNS rebinding, no CORS headers are ever sent, and
+  `POST /decide` requires `application/json`, so a cross-origin form post cannot
+  approve anything. Closing the tab, a dropped socket, a garbage body and 180
+  seconds of silence all resolve to deny. `FOREGUARD_NO_OPEN=1` stops it reaching
+  for your browser.
+- Context Foresight taint tracking (`foreguard proxy --taint`) shipped in 0.2.0 and
+  is described under Usage.
+- The recorded ledger (`foreguard proxy --ledger <path>`) shipped in 0.3.0. It is an
+  append-only JSONL audit trail of every tool call that records what was asked, how
+  it was classified, the taint verdict, and what happened (forwarded / dry-run /
+  executed / denied). You can query it with `jq`, and each line is flushed as it is
+  written, so a crash keeps everything up to that point.
 
 Add `--ledger run.jsonl` to any proxy invocation and inspect the session:
 
@@ -233,38 +247,43 @@ $ jq -c '{tool,kind,taint,decision}' run.jsonl
 {"tool":"send_email","kind":"mutation","taint":"attacker@evil.com","decision":"denied"}
 ```
 
-- ✅ **Promote a recorded ledger** (`foreguard promote <ledger> -- <server>`) — closes
-  the loop: record a plan in dry-run, review it offline, then replay the *exact* calls
-  for real. Foreguard becomes a minimal MCP client (handshake + verbatim `tools/call`).
-  Mutations only by default; each confirmed on the terminal unless `--yes`; fail-safe.
-- ✅ **Stateless MCP release candidate (`2026-07-28`)** — the spec that removes the `initialize`
-  handshake and moves client identity into `_meta` on every request. `promote`
-  negotiates `server/discover` first and falls back to the legacy handshake for older
-  servers. Because identity is now a per-message claim rather than something pinned
-  once, the proxy warns when it changes mid-session, and `_meta` is taint-scanned
-  alongside `arguments`. (Foreguard proxies stdio, so it does not see the new
-  `Mcp-Method` / `Mcp-Name` HTTP routing headers and makes no claim about them.)
+- Promoting a recorded ledger (`foreguard promote <ledger> -- <server>`) shipped in
+  0.4.0. You record a plan in dry-run, review it offline, then replay the exact
+  calls for real. For this Foreguard acts as a minimal MCP client that performs the
+  handshake and sends each `tools/call` verbatim. By default only mutations are
+  replayed, each one is confirmed on the terminal unless you pass `--yes`, and an
+  unconfirmed call is skipped.
+- Support for the stateless MCP release candidate (`2026-07-28`) shipped in 0.5.0.
+  That spec removes the `initialize` handshake and moves client identity into
+  `_meta` on every request. `promote` tries `server/discover` first and falls back
+  to the legacy handshake for older servers. Because identity is now claimed in each
+  message instead of pinned once, the proxy warns when it changes mid-session, and
+  `_meta` is scanned for taint alongside `arguments`. Foreguard proxies stdio, so it
+  does not see the new `Mcp-Method` / `Mcp-Name` HTTP routing headers and makes no
+  claim about them.
 
-Record a plan without executing anything, then promote it whenever you're ready:
+Record a plan without executing anything, then promote it when you are ready:
 
 ```sh
 # 1. record: dry-run a session to a ledger (nothing executes)
 foreguard proxy --ledger plan.jsonl -- npx -y @modelcontextprotocol/server-filesystem .
-# 2. review the plan — either read plan.jsonl, or preview what promote would replay:
+# 2. review the plan: either read plan.jsonl, or preview what promote would replay:
 foreguard promote plan.jsonl --dry-run
 # 3. promote: replay the exact recorded mutations for real
 foreguard promote plan.jsonl -- npx -y @modelcontextprotocol/server-filesystem .
 ```
 
-## Beyond dry-run: authorize, meter, and prove
+## Beyond dry-run
 
-The classifier decides *is this a mutation?* From 0.8.0, Foreguard also answers the
-next three questions — and can prove its answers after the fact.
+The classifier decides whether a call is a mutation. The features in this section,
+added in 0.8.0, build on that decision.
 
-**Authorize with policy (Cedar).** Point the proxy at a [Cedar](https://www.cedarpolicy.com/)
-policy and each tool call is checked against it. A `forbid` hard-blocks (even under
-`--approve`); a `permit` runs a known-safe mutation without prompting; taint always
-overrides a permit. Money rules are cents-accurate via `context.dec.*`.
+### Authorize with a Cedar policy
+
+Point the proxy at a [Cedar](https://www.cedarpolicy.com/) policy and each tool call
+is checked against it. A `forbid` blocks the call outright, even under `--approve`.
+A `permit` lets a known-safe mutation run without a prompt, although taint always
+overrides a permit. Money rules are accurate to the cent through `context.dec.*`.
 
 ```sh
 # refunds up to $50 auto-run; deleting system files is forbidden; cap the loop
@@ -273,11 +292,13 @@ foreguard proxy --policy fleet.cedar -- npx -y @modelcontextprotocol/server-file
 FOREGUARD_INGEST_TOKEN=… foreguard proxy --policy-url https://cp.example.com/v1/policy -- <server>
 ```
 
-A policy that references a missing attribute **fails closed** (downgrades to the
-dry-run gate) — a broken `forbid` can never let a mutation through.
+A policy that refers to a missing attribute fails closed and falls back to the
+dry-run gate, so a broken `forbid` can never let a mutation through.
 
-**Meter spend, and kill the runaway.** Enforcement, not alerting: the moment
-cumulative spend crosses the budget, the next request is refused.
+### Meter spend and stop a runaway
+
+The meter enforces the budget rather than alerting on it. As soon as cumulative
+spend crosses the budget, the next request is refused.
 
 ```sh
 # offline: meter a stream of model responses and hard-stop at the budget
@@ -287,9 +308,11 @@ foreguard gateway --upstream https://api.anthropic.com --budget 20
 #   then set ANTHROPIC_BASE_URL=http://127.0.0.1:8787
 ```
 
-**Prove the audit trail.** The `--ledger` is a SHA-256 hash chain — any edit,
-deletion, or reorder is detectable — and an instance can *sign* its head so even a
-control-plane operator can't forge it.
+### Prove the audit trail
+
+The `--ledger` file is a SHA-256 hash chain, so any edit, deletion or reordering can
+be detected. An instance can also sign the head of its chain, so not even the
+operator of a control plane can forge it.
 
 ```sh
 foreguard verify run.jsonl                       # intact, or the exact tampered line
@@ -298,25 +321,27 @@ FOREGUARD_INGEST_TOKEN=… foreguard report run.jsonl \
   --to https://cp.example.com --instance agent-1 --key signing.key
 ```
 
-**The fleet control plane** (`control-plane/`) is the commercial layer instances
-report to: a fleet dashboard, aggregated spend, central policy, a linkage-verified
-tamper-evident audit trail, **per-instance API keys** (a key can only report as
-itself, and is revocable), and **signed-head verification**. It's a Cloudflare
-Worker + D1; see [`control-plane/README.md`](control-plane/README.md).
+The control plane that `foreguard report` sends to is a Cloudflare Worker that
+receives signed ledger heads and spend from many instances and shows them in one
+place. It lives in a separate repository at
+[github.com/nlj3/foreguard-control-plane](https://github.com/nlj3/foreguard-control-plane).
 
-Honest scope: taint is best-effort, not sound; the gateway buffers responses rather
-than streaming them token-by-token yet; and server-side integrity today verifies
-chain *linkage* — full content re-verification runs via `foreguard verify`.
+### Known limits
+
+Taint tracking is best-effort, not sound. The gateway buffers responses and does not
+yet stream them token by token. On the control plane, integrity checking currently
+covers chain linkage only, and full re-verification of the content is done with
+`foreguard verify`.
 
 ## License
 
-Licensed under either of **[Apache License 2.0](LICENSE-APACHE)** or
-**[MIT license](LICENSE-MIT)** at your option. The `control-plane/` directory is
-covered by the same terms.
+Licensed under either of [Apache License 2.0](LICENSE-APACHE) or
+[MIT license](LICENSE-MIT) at your option. The control plane is licensed separately
+in its own repository.
 
-Unless you explicitly state otherwise, any contribution intentionally submitted
-for inclusion in this project by you, as defined in the Apache-2.0 license, shall
-be dual licensed as above, without any additional terms or conditions.
+Unless you explicitly state otherwise, any contribution intentionally submitted for
+inclusion in this project by you, as defined in the Apache-2.0 license, shall be
+dual licensed as above, without any additional terms or conditions.
 
-Versions already published to crates.io under BUSL-1.1 keep that licence; this
-change applies to versions released from here on.
+Versions 0.1.0 to 0.7.0 were published to crates.io under BUSL-1.1 and keep that
+licence. The change applies to every version released after them.
