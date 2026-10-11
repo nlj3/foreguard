@@ -1,0 +1,25 @@
+{
+  // Foreguard control plane — the commercial layer Foreguard instances report to.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "foreguard-control-plane",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-07-30",
+  // Structured logs + traces. Sample heads so a busy fleet doesn't over-log.
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 0.1
+  },
+  // D1 holds the fleet: instances, their hash-chained ledger entries, and the
+  // central Cedar policy. Bound as `env.DB`.
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "foreguard_cp",
+      "database_id": "REPLACE_WITH_D1_ID_AFTER_CREATE",
+      "migrations_dir": "migrations"
+    }
+  ]
+  // Secrets (NOT stored here — set with `wrangler secret put`):
+  //   INGEST_TOKEN  — instances present it to POST /v1/ingest and pull /v1/policy
+  //   ADMIN_TOKEN   — required to PUT /v1/policy and read the fleet/audit APIs
+}
