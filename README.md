@@ -1,7 +1,7 @@
 # Foreguard
 
 [![CI](https://github.com/nlj3/foreguard/actions/workflows/ci.yml/badge.svg)](https://github.com/nlj3/foreguard/actions/workflows/ci.yml)
-[![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](LICENSE)
+[![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](LICENSE-MIT)
 
 Foreguard shows you what an AI agent's tool calls would change before any of them
 run. Give it the calls an agent wants to make and it produces a Mutation Plan, which
