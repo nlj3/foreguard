@@ -133,9 +133,9 @@ fn canonical(v: &Value) -> String {
 fn chain_hash(prev: &str, seq: u64, canon: &str) -> String {
     let mut h = Sha256::new();
     h.update(prev.as_bytes());
-    h.update([b'\n']);
+    h.update(b"\n");
     h.update(seq.to_string().as_bytes());
-    h.update([b'\n']);
+    h.update(b"\n");
     h.update(canon.as_bytes());
     hex(&h.finalize())
 }
